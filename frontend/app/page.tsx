@@ -33,11 +33,6 @@ export default function Home() {
           <div className="h-[600px]">
             <Twin />
           </div>
-
-          {/* Footer section */}
-          <footer className="mt-8 text-center text-sm text-gray-500">
-            <p>Week 2: Building Your Digital Twin</p>
-          </footer>
         </div>
       </div>
     </main>
