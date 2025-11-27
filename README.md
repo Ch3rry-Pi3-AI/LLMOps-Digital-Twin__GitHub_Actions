@@ -7,7 +7,7 @@ It also prepares the backend for **AWS Lambda deployment** in the next stage.
 A full demo is shown below:
 
 <p align="center">
-  <img src="../img/demo/twin_demo.gif" width="100%" />
+  <img src="img/demo/twin_demo.gif" width="100%" />
 </p>
 
 
