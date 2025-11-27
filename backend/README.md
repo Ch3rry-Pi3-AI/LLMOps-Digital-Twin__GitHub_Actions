@@ -1,17 +1,3 @@
-Here is a clean, fully updated **`/backend` folder README**, now reflecting:
-
-* The new **memory system**
-* The new **S3 optional integration**
-* The new **data folder**
-* The new **context.py**
-* The new **resources.py**
-* The new **lambda_handler.py**
-* The updated **server.py**
-
-All formatting matches your preferred style — clean, simple, consistent, and **no horizontal rules**.
-
----
-
 # 📁 **`/backend`**
 
 The `backend` directory contains all API logic and supporting resources for the **llmops-digital-twin** project.
