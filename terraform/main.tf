@@ -1,141 +1,23 @@
-# 🧱 Create Terraform Configuration
-
-This branch sets up the full Terraform configuration for your Digital Twin stack.
-By the end of this stage, all core AWS resources (S3, Lambda, API Gateway, CloudFront, and optional Route 53/ACM) will be defined in code, and the frontend will be wired to use an environment-based API URL.
-
-Follow the steps below carefully and mirror the code exactly.
-
-## Step 1: Create Terraform Directory Structure
-
-In Cursor’s file explorer (left sidebar):
-
-1. Right-click in the blank space below all files
-2. Select **New Folder**
-3. Name it `terraform`
-
-Your project structure should now look like:
-
-```text
-twin/
-├── backend/
-├── frontend/
-├── memory/
-└── terraform/   (new)
-```
-
-All Terraform files in this branch will live inside the `terraform/` directory.
-
-## Step 2: Create Provider Configuration
-
-Create `terraform/versions.tf` with the following content:
-
-```hcl
-terraform {
-  required_version = ">= 1.0"
-
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 6.0"
-    }
-  }
-}
-
-provider "aws" {
-  # Uses AWS CLI configuration (aws configure)
-}
-
-provider "aws" {
-  alias  = "us_east_1"
-  region = "us-east-1"
-}
-```
-
-This:
-
-* Pins Terraform to `>= 1.0`
-* Uses the HashiCorp AWS provider in the `6.x` range
-* Defines a default AWS provider (using `aws configure`)
-* Adds a `us_east_1` provider alias for ACM/CloudFront requirements
-
-## Step 3: Define Variables
-
-Create `terraform/variables.tf`:
-
-```hcl
-variable "project_name" {
-  description = "Name prefix for all resources"
-  type        = string
-  validation {
-    condition     = can(regex("^[a-z0-9-]+$", var.project_name))
-    error_message = "Project name must contain only lowercase letters, numbers, and hyphens."
-  }
-}
-
-variable "environment" {
-  description = "Environment name (dev, test, prod)"
-  type        = string
-  validation {
-    condition     = contains(["dev", "test", "prod"], var.environment)
-    error_message = "Environment must be one of: dev, test, prod."
-  }
-}
-
-variable "bedrock_model_id" {
-  description = "Bedrock model ID"
-  type        = string
-  default     = "amazon.nova-micro-v1:0"
-}
-
-variable "lambda_timeout" {
-  description = "Lambda function timeout in seconds"
-  type        = number
-  default     = 60
-}
-
-variable "api_throttle_burst_limit" {
-  description = "API Gateway throttle burst limit"
-  type        = number
-  default     = 10
-}
-
-variable "api_throttle_rate_limit" {
-  description = "API Gateway throttle rate limit"
-  type        = number
-  default     = 5
-}
-
-variable "use_custom_domain" {
-  description = "Attach a custom domain to CloudFront"
-  type        = bool
-  default     = false
-}
-
-variable "root_domain" {
-  description = "Apex domain name, e.g. mydomain.com"
-  type        = string
-  default     = ""
-}
-```
-
-These variables parameterise naming, environment, model selection, Lambda timeout, API throttling, and optional custom domain support.
-
-## Step 4: Create Main Infrastructure
-
-Create `terraform/main.tf` and paste the full configuration below:
-
-```hcl
-# Data source to get current AWS account ID
+# ------------------------------------------------------------
+# 🔐 AWS Account Identity
+# ------------------------------------------------------------
+# Retrieves the current AWS account ID for dynamic naming
 data "aws_caller_identity" "current" {}
 
+# ------------------------------------------------------------
+# 🧩 Local Values (aliases, naming, tags)
+# ------------------------------------------------------------
 locals {
+  # Domain aliases when using a custom domain
   aliases = var.use_custom_domain && var.root_domain != "" ? [
     var.root_domain,
     "www.${var.root_domain}"
   ] : []
 
+  # Prefix applied to all resource names
   name_prefix = "${var.project_name}-${var.environment}"
 
+  # Standard resource tags
   common_tags = {
     Project     = var.project_name
     Environment = var.environment
@@ -143,12 +25,16 @@ locals {
   }
 }
 
-# S3 bucket for conversation memory
+# ------------------------------------------------------------
+# 🗄️ S3 Bucket — Conversation Memory
+# ------------------------------------------------------------
 resource "aws_s3_bucket" "memory" {
+  # Memory bucket uniquely tied to account ID
   bucket = "${local.name_prefix}-memory-${data.aws_caller_identity.current.account_id}"
   tags   = local.common_tags
 }
 
+# Block ALL public access
 resource "aws_s3_bucket_public_access_block" "memory" {
   bucket = aws_s3_bucket.memory.id
 
@@ -158,6 +44,7 @@ resource "aws_s3_bucket_public_access_block" "memory" {
   restrict_public_buckets = true
 }
 
+# Enforce bucket owner permissions
 resource "aws_s3_bucket_ownership_controls" "memory" {
   bucket = aws_s3_bucket.memory.id
 
@@ -166,12 +53,15 @@ resource "aws_s3_bucket_ownership_controls" "memory" {
   }
 }
 
-# S3 bucket for frontend static website
+# ------------------------------------------------------------
+# 🌐 S3 Bucket — Frontend Static Website
+# ------------------------------------------------------------
 resource "aws_s3_bucket" "frontend" {
   bucket = "${local.name_prefix}-frontend-${data.aws_caller_identity.current.account_id}"
   tags   = local.common_tags
 }
 
+# Allow public access for static website hosting
 resource "aws_s3_bucket_public_access_block" "frontend" {
   bucket = aws_s3_bucket.frontend.id
 
@@ -181,6 +71,7 @@ resource "aws_s3_bucket_public_access_block" "frontend" {
   restrict_public_buckets = false
 }
 
+# Website configuration (index + 404 pages)
 resource "aws_s3_bucket_website_configuration" "frontend" {
   bucket = aws_s3_bucket.frontend.id
 
@@ -193,6 +84,7 @@ resource "aws_s3_bucket_website_configuration" "frontend" {
   }
 }
 
+# Policy allowing public reads for website hosting
 resource "aws_s3_bucket_policy" "frontend" {
   bucket = aws_s3_bucket.frontend.id
 
@@ -205,14 +97,16 @@ resource "aws_s3_bucket_policy" "frontend" {
         Principal = "*"
         Action    = "s3:GetObject"
         Resource  = "${aws_s3_bucket.frontend.arn}/*"
-      },
+      }
     ]
   })
 
   depends_on = [aws_s3_bucket_public_access_block.frontend]
 }
 
-# IAM role for Lambda
+# ------------------------------------------------------------
+# 🛠️ IAM Role for Lambda Execution
+# ------------------------------------------------------------
 resource "aws_iam_role" "lambda_role" {
   name = "${local.name_prefix}-lambda-role"
   tags = local.common_tags
@@ -226,27 +120,32 @@ resource "aws_iam_role" "lambda_role" {
         Principal = {
           Service = "lambda.amazonaws.com"
         }
-      },
+      }
     ]
   })
 }
 
+# Basic Lambda execution permissions (logs)
 resource "aws_iam_role_policy_attachment" "lambda_basic" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
   role       = aws_iam_role.lambda_role.name
 }
 
+# Bedrock model access permissions
 resource "aws_iam_role_policy_attachment" "lambda_bedrock" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonBedrockFullAccess"
   role       = aws_iam_role.lambda_role.name
 }
 
+# S3 read/write permissions for memory storage
 resource "aws_iam_role_policy_attachment" "lambda_s3" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonS3FullAccess"
   role       = aws_iam_role.lambda_role.name
 }
 
-# Lambda function
+# ------------------------------------------------------------
+# 🧠 Lambda Function (Digital Twin Backend)
+# ------------------------------------------------------------
 resource "aws_lambda_function" "api" {
   filename         = "${path.module}/../backend/lambda-deployment.zip"
   function_name    = "${local.name_prefix}-api"
@@ -258,6 +157,7 @@ resource "aws_lambda_function" "api" {
   timeout          = var.lambda_timeout
   tags             = local.common_tags
 
+  # Environment variables passed into Lambda
   environment {
     variables = {
       CORS_ORIGINS     = var.use_custom_domain ? "https://${var.root_domain},https://www.${var.root_domain}" : "https://${aws_cloudfront_distribution.main.domain_name}"
@@ -267,11 +167,13 @@ resource "aws_lambda_function" "api" {
     }
   }
 
-  # Ensure Lambda waits for the distribution to exist
+  # Ensure CloudFront exists before Lambda reads its domain
   depends_on = [aws_cloudfront_distribution.main]
 }
 
-# API Gateway HTTP API
+# ------------------------------------------------------------
+# 🌉 API Gateway (HTTP API)
+# ------------------------------------------------------------
 resource "aws_apigatewayv2_api" "main" {
   name          = "${local.name_prefix}-api-gateway"
   protocol_type = "HTTP"
@@ -286,6 +188,7 @@ resource "aws_apigatewayv2_api" "main" {
   }
 }
 
+# Default stage with throttling
 resource "aws_apigatewayv2_stage" "default" {
   api_id      = aws_apigatewayv2_api.main.id
   name        = "$default"
@@ -298,13 +201,14 @@ resource "aws_apigatewayv2_stage" "default" {
   }
 }
 
+# Lambda integration
 resource "aws_apigatewayv2_integration" "lambda" {
   api_id           = aws_apigatewayv2_api.main.id
   integration_type = "AWS_PROXY"
   integration_uri  = aws_lambda_function.api.invoke_arn
 }
 
-# API Gateway Routes
+# API Routes
 resource "aws_apigatewayv2_route" "get_root" {
   api_id    = aws_apigatewayv2_api.main.id
   route_key = "GET /"
@@ -323,7 +227,7 @@ resource "aws_apigatewayv2_route" "get_health" {
   target    = "integrations/${aws_apigatewayv2_integration.lambda.id}"
 }
 
-# Lambda permission for API Gateway
+# Permission allowing API Gateway to call Lambda
 resource "aws_lambda_permission" "api_gw" {
   statement_id  = "AllowExecutionFromAPIGateway"
   action        = "lambda:InvokeFunction"
@@ -332,10 +236,12 @@ resource "aws_lambda_permission" "api_gw" {
   source_arn    = "${aws_apigatewayv2_api.main.execution_arn}/*/*"
 }
 
-# CloudFront distribution
+# ------------------------------------------------------------
+# 🌍 CloudFront Distribution (Frontend Delivery)
+# ------------------------------------------------------------
 resource "aws_cloudfront_distribution" "main" {
   aliases = local.aliases
-  
+
   viewer_certificate {
     acm_certificate_arn            = var.use_custom_domain ? aws_acm_certificate.site[0].arn : null
     cloudfront_default_certificate = var.use_custom_domain ? false : true
@@ -343,6 +249,7 @@ resource "aws_cloudfront_distribution" "main" {
     minimum_protocol_version       = "TLSv1.2_2021"
   }
 
+  # Origin: S3 static website endpoint
   origin {
     domain_name = aws_s3_bucket_website_configuration.frontend.website_endpoint
     origin_id   = "S3-${aws_s3_bucket.frontend.id}"
@@ -391,13 +298,18 @@ resource "aws_cloudfront_distribution" "main" {
   }
 }
 
-# Optional: Custom domain configuration (only created when use_custom_domain = true)
+# ------------------------------------------------------------
+# 🌐 Optional: Custom Domain (Route53 + ACM)
+# ------------------------------------------------------------
+
+# Hosted zone lookup
 data "aws_route53_zone" "root" {
   count        = var.use_custom_domain ? 1 : 0
   name         = var.root_domain
   private_zone = false
 }
 
+# ACM certificate in us-east-1 (CloudFront requirement)
 resource "aws_acm_certificate" "site" {
   count                     = var.use_custom_domain ? 1 : 0
   provider                  = aws.us_east_1
@@ -408,6 +320,7 @@ resource "aws_acm_certificate" "site" {
   tags = local.common_tags
 }
 
+# DNS validation records
 resource "aws_route53_record" "site_validation" {
   for_each = var.use_custom_domain ? {
     for dvo in aws_acm_certificate.site[0].domain_validation_options :
@@ -421,15 +334,18 @@ resource "aws_route53_record" "site_validation" {
   records = [each.value.resource_record_value]
 }
 
+# Certificate validation
 resource "aws_acm_certificate_validation" "site" {
   count           = var.use_custom_domain ? 1 : 0
   provider        = aws.us_east_1
   certificate_arn = aws_acm_certificate.site[0].arn
+
   validation_record_fqdns = [
     for r in aws_route53_record.site_validation : r.fqdn
   ]
 }
 
+# Route53 A record for root domain
 resource "aws_route53_record" "alias_root" {
   count   = var.use_custom_domain ? 1 : 0
   zone_id = data.aws_route53_zone.root[0].zone_id
@@ -443,6 +359,7 @@ resource "aws_route53_record" "alias_root" {
   }
 }
 
+# Route53 AAAA record (IPv6)
 resource "aws_route53_record" "alias_root_ipv6" {
   count   = var.use_custom_domain ? 1 : 0
   zone_id = data.aws_route53_zone.root[0].zone_id
@@ -456,6 +373,7 @@ resource "aws_route53_record" "alias_root_ipv6" {
   }
 }
 
+# Route53 A record for www
 resource "aws_route53_record" "alias_www" {
   count   = var.use_custom_domain ? 1 : 0
   zone_id = data.aws_route53_zone.root[0].zone_id
@@ -469,6 +387,7 @@ resource "aws_route53_record" "alias_www" {
   }
 }
 
+# Route53 AAAA record for www (IPv6)
 resource "aws_route53_record" "alias_www_ipv6" {
   count   = var.use_custom_domain ? 1 : 0
   zone_id = data.aws_route53_zone.root[0].zone_id
@@ -481,95 +400,3 @@ resource "aws_route53_record" "alias_www_ipv6" {
     evaluate_target_health = false
   }
 }
-```
-
-This `main.tf` encodes the full AWS infrastructure for the Digital Twin: memory storage, frontend hosting, Lambda backend, API Gateway, CloudFront, and optional custom domains.
-
-## Step 5: Define Outputs
-
-Create `terraform/outputs.tf`:
-
-```hcl
-output "api_gateway_url" {
-  description = "URL of the API Gateway"
-  value       = aws_apigatewayv2_api.main.api_endpoint
-}
-
-output "cloudfront_url" {
-  description = "URL of the CloudFront distribution"
-  value       = "https://${aws_cloudfront_distribution.main.domain_name}"
-}
-
-output "s3_frontend_bucket" {
-  description = "Name of the S3 bucket for frontend"
-  value       = aws_s3_bucket.frontend.id
-}
-
-output "s3_memory_bucket" {
-  description = "Name of the S3 bucket for memory storage"
-  value       = aws_s3_bucket.memory.id
-}
-
-output "lambda_function_name" {
-  description = "Name of the Lambda function"
-  value       = aws_lambda_function.api.function_name
-}
-
-output "custom_domain_url" {
-  description = "Root URL of the production site"
-  value       = var.use_custom_domain ? "https://${var.root_domain}" : ""
-}
-```
-
-These outputs will be used after `terraform apply` to quickly locate your deployed endpoints and resources.
-
-## Step 6: Create Default Variable Values
-
-Create `terraform/terraform.tfvars`:
-
-```hcl
-project_name             = "twin"
-environment              = "dev"
-bedrock_model_id         = "amazon.nova-micro-v1:0"
-lambda_timeout           = 60
-api_throttle_burst_limit = 10
-api_throttle_rate_limit  = 5
-use_custom_domain        = false
-root_domain              = ""
-```
-
-This provides sensible defaults for development and avoids having to pass variables on the command line.
-
-## Step 7: Update Frontend to Use Environment Variables
-
-Before creating deployment scripts, update the frontend to use an environment variable for the API URL instead of a hardcoded value.
-
-Open `frontend/components/twin.tsx` and find the existing fetch call (around line 43). Replace:
-
-```typescript
-// Find this line:
-const response = await fetch('http://localhost:8000/chat', {
-```
-
-with:
-
-```typescript
-// Replace with:
-const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/chat`, {
-```
-
-This allows the frontend to:
-
-* Use `http://localhost:8000` during local development
-* Use a production API URL via `NEXT_PUBLIC_API_URL` when deployed
-
-Next.js requires any environment variables exposed to the browser to be prefixed with `NEXT_PUBLIC_`, hence `NEXT_PUBLIC_API_URL`.
-
-## Checkpoint
-
-At this point you have:
-
-* A dedicated `terraform/` directory
-* Provider, variables, main infrastructure, outputs, and tfvars all defined
-* Frontend configured to read its API URL from an environment variable
-
