@@ -1,0 +1,107 @@
+################################################################################
+# 🟥 GitHub Actions: Destroy Environment
+#
+# This workflow DESTROYS an existing environment (dev, test, prod).
+# It requires manual trigger AND a typed confirmation to prevent accidents.
+#
+# Uses:
+#   • AWS OIDC for authentication (no long-lived credentials)
+#   • Terraform for stateful destruction
+#   • destroy.sh for bucket cleanup + infra teardown
+################################################################################
+
+name: Destroy Environment
+
+# --------------------------------------------------------------------------
+# 🎯 Manual Trigger Only — Requires Explicit Environment + Confirmation
+# --------------------------------------------------------------------------
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to destroy'
+        required: true
+        type: choice
+        options:
+          - dev
+          - test
+          - prod
+      confirm:
+        description: 'Type the environment name to confirm destruction'
+        required: true
+
+# --------------------------------------------------------------------------
+# 🔐 Required Permissions for AWS OIDC Authentication
+# --------------------------------------------------------------------------
+permissions:
+  id-token: write
+  contents: read
+
+# --------------------------------------------------------------------------
+# 💣 Destruction Job
+# --------------------------------------------------------------------------
+jobs:
+  destroy:
+    name: Destroy ${{ github.event.inputs.environment }}
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+
+    steps:
+
+      ########################################################################
+      # 🛑 Step 1 — Verify Confirmation Matches Environment
+      ########################################################################
+      - name: Verify confirmation
+        run: |
+          if [ "${{ github.event.inputs.confirm }}" != "${{ github.event.inputs.environment }}" ]; then
+            echo "❌ Confirmation does not match environment name!"
+            echo "You entered: '${{ github.event.inputs.confirm }}'"
+            echo "Expected: '${{ github.event.inputs.environment }}'"
+            exit 1
+          fi
+          echo "✅ Destruction confirmed for ${{ github.event.inputs.environment }}"
+
+      ########################################################################
+      # 📥 Step 2 — Checkout Repository
+      ########################################################################
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      ########################################################################
+      # 🔐 Step 3 — Authenticate to AWS via OIDC
+      ########################################################################
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-session-name: github-actions-destroy
+          aws-region: ${{ secrets.DEFAULT_AWS_REGION }}
+
+      ########################################################################
+      # 🟫 Step 4 — Install Terraform CLI
+      ########################################################################
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false   # Required for clean, script-friendly Terraform output
+
+      ########################################################################
+      # 💥 Step 5 — Run Destruction Script (Terraform + S3 Cleanup)
+      ########################################################################
+      - name: Run Destroy Script
+        run: |
+          # Pass AWS environment variables to script
+          export AWS_ACCOUNT_ID=${{ secrets.AWS_ACCOUNT_ID }}
+          export DEFAULT_AWS_REGION=${{ secrets.DEFAULT_AWS_REGION }}
+
+          chmod +x scripts/destroy.sh
+          ./scripts/destroy.sh ${{ github.event.inputs.environment }}
+        env:
+          AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+
+      ########################################################################
+      # 🎉 Step 6 — Completion Message
+      ########################################################################
+      - name: Destruction Complete
+        run: |
+          echo "✅ Environment ${{ github.event.inputs.environment }} has been destroyed!"
