@@ -1,0 +1,152 @@
+################################################################################
+# 🟦 GitHub Actions: Deploy Digital Twin
+#
+# This workflow deploys the Digital Twin infrastructure and frontend to AWS
+# whenever:
+#   1. Code is pushed to `main`, OR
+#   2. A manual dispatch event is triggered with a chosen environment.
+#
+# It uses AWS OIDC (no long-lived keys), Terraform for infrastructure,
+# uv (Python) + Node.js for app build, and your deploy.sh script for orchestration.
+################################################################################
+
+name: Deploy Digital Twin
+
+# --------------------------------------------------------------------------
+# 🎯 Trigger Conditions
+# --------------------------------------------------------------------------
+on:
+  push:
+    branches: [main]   # Automatic deployment on push to main
+  workflow_dispatch:    # Manual deployment trigger
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - test
+          - prod
+
+# --------------------------------------------------------------------------
+# 🔐 Required Permissions for AWS OIDC Authentication
+# --------------------------------------------------------------------------
+permissions:
+  id-token: write     # Needed for GitHub → AWS OIDC authentication
+  contents: read      # Required to clone the repo
+
+# --------------------------------------------------------------------------
+# 🚀 Deployment Job
+# --------------------------------------------------------------------------
+jobs:
+  deploy:
+    name: Deploy to ${{ github.event.inputs.environment || 'dev' }}
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'dev' }}
+
+    steps:
+
+      ########################################################################
+      # 📥 Step 1 — Checkout Repository
+      ########################################################################
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      ########################################################################
+      # 🔐 Step 2 — Configure AWS Credentials via OIDC
+      ########################################################################
+      # Authenticates GitHub Actions to AWS without needing access keys.
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-session-name: github-actions-deploy
+          aws-region: ${{ secrets.DEFAULT_AWS_REGION }}
+
+      ########################################################################
+      # 🐍 Step 3 — Set Up Python Environment
+      ########################################################################
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      ########################################################################
+      # ⚡ Step 4 — Install uv (Python package/build tool)
+      ########################################################################
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      ########################################################################
+      # 🟫 Step 5 — Install Terraform CLI
+      ########################################################################
+      # terraform_wrapper=false ensures raw tf output (needed by scripts)
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      ########################################################################
+      # 🟩 Step 6 — Install Node.js + npm cache
+      ########################################################################
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      ########################################################################
+      # 🚀 Step 7 — Run Deployment Script (terraform + lambda + frontend)
+      ########################################################################
+      # Pass required AWS variables and call your deploy.sh script.
+      - name: Run Deployment Script
+        run: |
+          export AWS_ACCOUNT_ID=${{ secrets.AWS_ACCOUNT_ID }}
+          export DEFAULT_AWS_REGION=${{ secrets.DEFAULT_AWS_REGION }}
+
+          chmod +x scripts/deploy.sh
+          ./scripts/deploy.sh ${{ github.event.inputs.environment || 'dev' }}
+        env:
+          AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+
+      ########################################################################
+      # 📤 Step 8 — Extract Terraform Outputs for Summary + CloudFront Invalidation
+      ########################################################################
+      - name: Get Deployment URLs
+        id: deploy_outputs
+        working-directory: ./terraform
+        run: |
+          terraform workspace select ${{ github.event.inputs.environment || 'dev' }}
+          echo "cloudfront_url=$(terraform output -raw cloudfront_url)" >> $GITHUB_OUTPUT
+          echo "api_url=$(terraform output -raw api_gateway_url)" >> $GITHUB_OUTPUT
+          echo "frontend_bucket=$(terraform output -raw s3_frontend_bucket)" >> $GITHUB_OUTPUT
+
+      ########################################################################
+      # 🌐 Step 9 — Invalidate CloudFront Cache (if distribution exists)
+      ########################################################################
+      - name: Invalidate CloudFront
+        run: |
+          DISTRIBUTION_ID=$(aws cloudfront list-distributions \
+            --query "DistributionList.Items[?Origins.Items[?DomainName=='${{ steps.deploy_outputs.outputs.frontend_bucket }}.s3-website-${{ secrets.DEFAULT_AWS_REGION }}.amazonaws.com']].Id | [0]" \
+            --output text)
+
+          if [ "$DISTRIBUTION_ID" != "None" ] && [ -n "$DISTRIBUTION_ID" ]; then
+            aws cloudfront create-invalidation \
+              --distribution-id $DISTRIBUTION_ID \
+              --paths "/*"
+          fi
+
+      ########################################################################
+      # 📊 Step 10 — Output Deployment Summary to Console
+      ########################################################################
+      - name: Deployment Summary
+        run: |
+          echo "✅ Deployment Complete!"
+          echo "🌐 CloudFront URL: ${{ steps.deploy_outputs.outputs.cloudfront_url }}"
+          echo "📡 API Gateway: ${{ steps.deploy_outputs.outputs.api_url }}"
+          echo "🪣 Frontend Bucket: ${{ steps.deploy_outputs.outputs.frontend_bucket }}"
