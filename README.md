@@ -1,162 +1,221 @@
-# 🗂️ **Initialize Git Repository — Branch Overview**
+Understood.
+No “02”, no “branch 02”, no “stage 02”, **no horizontal rules**, and **no extra emojis except the header emoji**.
+Structure will follow:
 
-This branch prepares the project for source control and later CI/CD automation.
-It guides the user through setting up `.gitignore`, initialising Git from a clean state, configuring user details, and pushing the Digital Twin project to GitHub.
+* **Header (with one emoji)**
+* **Parts** as major section headers
+* **Stages** inside each part using:
+  **Stage 1: …**
+  **Stage 2: …**
+  etc.
+* Clean, professional, consistent with the format from your previous high-quality branch READMEs.
 
-## **Stage 1: Create a Complete `.gitignore`**
+Here is the corrected README exactly as requested.
 
-Ensure the root `.gitignore` (`twin/.gitignore`) contains all required exclusions, including Terraform state, Lambda artefacts, environment files, frontend build outputs, Python caches, and AWS credentials.
+---
 
-```gitignore
-# Terraform
-*.tfstate
-*.tfstate.*
-.terraform/
-.terraform.lock.hcl
-terraform.tfstate.d/
-*.tfvars.secret
+# ☁️ **Set Up Terraform S3 Backend**
 
-# Lambda packages
-lambda-deployment.zip
-lambda-package/
+This branch configures a **remote Terraform backend** using an S3 bucket and DynamoDB table.
+This allows Terraform to store state securely, support team workflows, and integrate with CI/CD pipelines.
+These resources are created once per AWS account and remain globally available.
 
-# Memory storage (conversation history)
-memory/
+## **Part 1: Create Remote Backend Resources**
 
-# Environment files
-.env
-.env.*
-!.env.example
+### Stage 1: Add Backend Setup File
 
-# Node
-node_modules/
-out/
-.next/
-*.log
+Create the file:
 
-# Python
-__pycache__/
-*.pyc
-.venv/
-venv/
-
-# IDE
-.vscode/
-.idea/
-*.swp
-.DS_Store
-Thumbs.db
-
-# AWS
-.aws/
+```
+terraform/backend-setup.tf
 ```
 
-This ensures sensitive files, generated artefacts, and platform-specific clutter do not enter version control.
+Add the following configuration:
 
-## **Stage 2: Create Example Environment File**
+```hcl
+# Creates the S3 bucket and DynamoDB table used for Terraform remote state
+# Run this once per AWS account, then remove this file afterwards
 
-Provide a template `.env.example` to document required environment variables without exposing secrets.
+resource "aws_s3_bucket" "terraform_state" {
+  bucket = "twin-terraform-state-${data.aws_caller_identity.current.account_id}"
 
-Create the file at `twin/.env.example`:
+  tags = {
+    Name        = "Terraform State Store"
+    Environment = "global"
+    ManagedBy   = "terraform"
+  }
+}
+
+resource "aws_s3_bucket_versioning" "terraform_state" {
+  bucket = aws_s3_bucket.terraform_state.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "terraform_state" {
+  bucket = aws_s3_bucket.terraform_state.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "terraform_state" {
+  bucket = aws_s3_bucket.terraform_state.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_dynamodb_table" "terraform_locks" {
+  name         = "twin-terraform-locks"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "LockID"
+
+  attribute {
+    name = "LockID"
+    type = "S"
+  }
+
+  tags = {
+    Name        = "Terraform State Locks"
+    Environment = "global"
+    ManagedBy   = "terraform"
+  }
+}
+
+output "state_bucket_name" {
+  value = aws_s3_bucket.terraform_state.id
+}
+
+output "dynamodb_table_name" {
+  value = aws_dynamodb_table.terraform_locks.name
+}
+```
+
+This file defines:
+
+* A secure, versioned S3 bucket
+* Full server-side encryption
+* Public access blocking
+* A DynamoDB table for Terraform state locking
+* Outputs confirming creation
+
+### Stage 2: Apply Backend Resources
+
+From the project root:
 
 ```bash
-# AWS Configuration
-AWS_ACCOUNT_ID=your_12_digit_account_id
-DEFAULT_AWS_REGION=us-east-1
-
-# Project Configuration
-PROJECT_NAME=twin
+cd terraform
+terraform workspace select default
+terraform init
 ```
 
-This file will serve as the basis for `.env` files used during deployment.
+Apply backend resources:
 
-## **Stage 3: Initialise Git in a Clean State**
-
-Remove any nested git repositories created by tools such as `create-next-app` or `uv`.
-
-### Mac/Linux
+**Mac/Linux**
 
 ```bash
-cd twin
-
-rm -rf frontend/.git backend/.git 2>/dev/null
-
-git init -b main
-
-# If your Git version does not support -b:
-# git init
-# git checkout -b main
-
-git config user.name "Your Name"
-git config user.email "your.email@example.com"
+terraform apply \
+  -target=aws_s3_bucket.terraform_state \
+  -target=aws_s3_bucket_versioning.terraform_state \
+  -target=aws_s3_bucket_server_side_encryption_configuration.terraform_state \
+  -target=aws_s3_bucket_public_access_block.terraform_state \
+  -target=aws_dynamodb_table.terraform_locks
 ```
 
-### Windows (PowerShell)
+**Windows PowerShell**
 
 ```powershell
-cd twin
-
-Remove-Item -Path frontend/.git -Recurse -Force -ErrorAction SilentlyContinue
-Remove-Item -Path backend/.git -Recurse -Force -ErrorAction SilentlyContinue
-
-git init -b main
-
-# If -b is not supported:
-# git init
-# git checkout -b main
-
-git config user.name "Your Name"
-git config user.email "your.email@example.com"
+terraform apply --% `
+  -target="aws_s3_bucket.terraform_state" `
+  -target="aws_s3_bucket_versioning.terraform_state" `
+  -target="aws_s3_bucket_server_side_encryption_configuration.terraform_state" `
+  -target="aws_s3_bucket_public_access_block.terraform_state" `
+  -target="aws_dynamodb_table.terraform_locks"
 ```
 
-### Add and commit all files
+Verify creation:
 
 ```bash
-git add .
-git commit -m "Initial commit: Digital Twin infrastructure and application"
+terraform output
 ```
 
-Your repository is now initialised with a clean history and correct root-level structure.
+## **Part 2: Clean Up Setup File**
 
-## **Stage 4: Create a New GitHub Repository**
+### Stage 3: Remove Setup File
 
-1. Navigate to [https://github.com](https://github.com)
-
-2. Select **New repository**
-
-3. Configure:
-
-   * **Repository name:** `digital-twin` (or your preferred name)
-   * **Description:** AI Digital Twin deployed on AWS with Terraform
-   * **Visibility:** Public or Private (Private recommended for personal data)
-   * **Important:** Do **not** initialise with a README, `.gitignore`, or license
-
-4. Click **Create repository**
-
-GitHub will now give you a remote URL and push instructions.
-
-## **Stage 5: Push Local Repository to GitHub**
-
-Replace `YOUR_USERNAME` with your GitHub username:
+Once the backend infrastructure exists, remove the setup file:
 
 ```bash
-git remote add origin https://github.com/YOUR_USERNAME/digital-twin.git
-git push -u origin main
+rm backend-setup.tf
 ```
 
-If authentication is requested:
+The backend bucket and lock table remain permanently available to all Terraform workspaces.
 
-* **Username:** your GitHub username
-* **Password:** a **Personal Access Token**
+## **Part 3: Update Deployment and Destroy Scripts**
 
-  * Generate at: GitHub → Settings → Developer settings → Personal access tokens
-  * Select at least the `repo` scope
+### Stage 4: Update deploy.sh
 
-## **Checkpoint**
+Locate the line:
 
-Your Digital Twin project is now:
+```bash
+terraform init -input=false
+```
 
-* Version-controlled
-* Cleanly initialised
-* Structured for collaboration
-* Ready for GitHub Actions and full CI/CD in the next stages
+Replace with:
+
+```bash
+AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+AWS_REGION=${DEFAULT_AWS_REGION:-us-east-1}
+
+terraform init -input=false \
+  -backend-config="bucket=twin-terraform-state-${AWS_ACCOUNT_ID}" \
+  -backend-config="key=${ENVIRONMENT}/terraform.tfstate" \
+  -backend-config="region=${AWS_REGION}" \
+  -backend-config="dynamodb_table=twin-terraform-locks" \
+  -backend-config="encrypt=true"
+```
+
+### Stage 5: Update deploy.ps1
+
+Replace the plain init line with:
+
+```powershell
+$awsAccountId = aws sts get-caller-identity --query Account --output text
+$awsRegion = if ($env:DEFAULT_AWS_REGION) { $env:DEFAULT_AWS_REGION } else { "us-east-1" }
+
+terraform init -input=false `
+  -backend-config="bucket=twin-terraform-state-$awsAccountId" `
+  -backend-config="key=$Environment/terraform.tfstate" `
+  -backend-config="region=$awsRegion" `
+  -backend-config="dynamodb_table=twin-terraform-locks" `
+  -backend-config="encrypt=true"
+```
+
+### Stage 6: Replace destroy scripts
+
+Update both `destroy.sh` and `destroy.ps1` with the new versions that include:
+
+* S3 backend initialization
+* S3 bucket emptying
+* Region and account detection
+* Additional stability handling for CI/CD runs
+
+(These scripts were provided earlier and will be included in your repo.)
+
+## **Completion Check**
+
+When this branch is complete:
+
+* A secure Terraform S3 backend exists
+* DynamoDB state locking is enabled
+* Backend setup file has been removed
+* Deployment scripts and destroy scripts now support remote backend
+* The project is ready for CI/CD integration
