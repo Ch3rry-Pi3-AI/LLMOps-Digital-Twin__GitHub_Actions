@@ -1,231 +1,97 @@
-# 🛠️ Deployment Scripts
+# 🚀 Deploy Development Environment
 
-This branch introduces the **automation layer** for deploying your entire Digital Twin architecture using both **Shell (Mac/Linux)** and **PowerShell (Windows)** scripts.
-These scripts wrap the full workflow:
+This branch introduces automated deployment for the **development environment**, using a combination of Terraform and custom deployment scripts. Once completed, your entire system (backend, frontend, infrastructure) can be deployed with a single command.
 
-* Build Lambda package
-* Run Terraform (init → workspace → apply)
-* Build and upload the frontend
-* Output URLs for CloudFront, API Gateway, and custom domains
+## 📂 What This Stage Covers
 
-They will also be used later in **GitHub Actions**, so every student must include them.
+This branch adds:
 
-## Create Deployment Scripts
+* Terraform initialisation
+* Automated deployment scripts (`deploy.sh` and `deploy.ps1`)
+* A one-step deployment flow for the full dev environment
+* CloudFront + Lambda + API Gateway + S3 provisioning
+* Frontend build and upload automation
 
-### Step 1: Create the `scripts` Directory
+## 🧩 Steps Completed in This Branch
 
-1. Right-click on blank space beneath the file list
-2. Select **New Folder**
-3. Name it:
+### **1. Initialise Terraform**
 
-```
-scripts
-```
-
-Your structure now includes:
-
-```
-twin/
-├── backend/
-├── frontend/
-├── memory/
-└── scripts/   ← new
-```
-
-### Step 2: Create Shell Script for Mac/Linux
-
-**Everyone must create this file**, even if you are on Windows.
-GitHub Actions will use this script on Day 5.
-
-Create:
-
-```
-scripts/deploy.sh
-```
-
-Paste:
-
-```bash
-#!/bin/bash
-set -e
-
-ENVIRONMENT=${1:-dev}          # dev | test | prod
-PROJECT_NAME=${2:-twin}
-
-echo "🚀 Deploying ${PROJECT_NAME} to ${ENVIRONMENT}..."
-
-# 1. Build Lambda package
-cd "$(dirname "$0")/.."        # project root
-echo "📦 Building Lambda package..."
-(cd backend && uv run deploy.py)
-
-# 2. Terraform workspace & apply
-cd terraform
-terraform init -input=false
-
-if ! terraform workspace list | grep -q "$ENVIRONMENT"; then
-  terraform workspace new "$ENVIRONMENT"
-else
-  terraform workspace select "$ENVIRONMENT"
-fi
-
-# Use prod.tfvars for production environment
-if [ "$ENVIRONMENT" = "prod" ]; then
-  TF_APPLY_CMD=(terraform apply -var-file=prod.tfvars -var="project_name=$PROJECT_NAME" -var="environment=$ENVIRONMENT" -auto-approve)
-else
-  TF_APPLY_CMD=(terraform apply -var="project_name=$PROJECT_NAME" -var="environment=$ENVIRONMENT" -auto-approve)
-fi
-
-echo "🎯 Applying Terraform..."
-"${TF_APPLY_CMD[@]}"
-
-API_URL=$(terraform output -raw api_gateway_url)
-FRONTEND_BUCKET=$(terraform output -raw s3_frontend_bucket)
-CUSTOM_URL=$(terraform output -raw custom_domain_url 2>/dev/null || true)
-
-# 3. Build + deploy frontend
-cd ../frontend
-
-# Create production environment file with API URL
-echo "📝 Setting API URL for production..."
-echo "NEXT_PUBLIC_API_URL=$API_URL" > .env.production
-
-npm install
-npm run build
-aws s3 sync ./out "s3://$FRONTEND_BUCKET/" --delete
-cd ..
-
-# 4. Final messages
-echo -e "\n✅ Deployment complete!"
-echo "🌐 CloudFront URL : $(terraform -chdir=terraform output -raw cloudfront_url)"
-if [ -n "$CUSTOM_URL" ]; then
-  echo "🔗 Custom domain  : $CUSTOM_URL"
-fi
-echo "📡 API Gateway    : $API_URL"
-```
-
-Mac/Linux users must make it executable:
-
-```bash
-chmod +x scripts/deploy.sh
-```
-
-Windows users: **no need** to run chmod.
-
-### Step 3: Create PowerShell Script for Windows
-
-Mac/Linux users can skip this.
-
-Create:
-
-```
-scripts/deploy.ps1
-```
-
-Paste:
-
-```powershell
-param(
-    [string]$Environment = "dev",   # dev | test | prod
-    [string]$ProjectName = "twin"
-)
-$ErrorActionPreference = "Stop"
-
-Write-Host "Deploying $ProjectName to $Environment ..." -ForegroundColor Green
-
-# 1. Build Lambda package
-Set-Location (Split-Path $PSScriptRoot -Parent)   # project root
-Write-Host "Building Lambda package..." -ForegroundColor Yellow
-Set-Location backend
-uv run deploy.py
-Set-Location ..
-
-# 2. Terraform workspace & apply
-Set-Location terraform
-terraform init -input=false
-
-if (-not (terraform workspace list | Select-String $Environment)) {
-    terraform workspace new $Environment
-} else {
-    terraform workspace select $Environment
-}
-
-if ($Environment -eq "prod") {
-    terraform apply -var-file=prod.tfvars -var="project_name=$ProjectName" -var="environment=$Environment" -auto-approve
-} else {
-    terraform apply -var="project_name=$ProjectName" -var="environment=$Environment" -auto-approve
-}
-
-$ApiUrl         = terraform output -raw api_gateway_url
-$FrontendBucket = terraform output -raw s3_frontend_bucket
-try { $CustomUrl = terraform output -raw custom_domain_url } catch { $CustomUrl = "" }
-
-# 3. Build + deploy frontend
-Set-Location ..\frontend
-
-Write-Host "Setting API URL for production..." -ForegroundColor Yellow
-"NEXT_PUBLIC_API_URL=$ApiUrl" | Out-File .env.production -Encoding utf8
-
-npm install
-npm run build
-aws s3 sync .\out "s3://$FrontendBucket/" --delete
-Set-Location ..
-
-# 4. Final summary
-$CfUrl = terraform -chdir=terraform output -raw cloudfront_url
-
-Write-Host "Deployment complete!" -ForegroundColor Green
-Write-Host "CloudFront URL : $CfUrl" -ForegroundColor Cyan
-if ($CustomUrl) {
-    Write-Host "Custom domain  : $CustomUrl" -ForegroundColor Cyan
-}
-Write-Host "API Gateway    : $ApiUrl" -ForegroundColor Cyan
-```
-
-## Part 5: Deploy Development Environment
-
-### Step 1: Initialize Terraform
+From the project root:
 
 ```bash
 cd terraform
 terraform init
 ```
 
-Expected output:
+Expected console output:
 
 ```
 Initializing the backend...
 Initializing provider plugins...
-- Installing hashicorp/aws v6.x.x...
+- Finding hashicorp/aws versions matching "~> 6.0"...
+- Installing hashicorp/aws v6.23.0...
+- Installed hashicorp/aws v6.23.0 (signed by HashiCorp)
+Terraform has created a lock file .terraform.lock.hcl to record the provider
+selections it made above. Include this file in your version control repository
+so that Terraform can guarantee to make the same selections by default when
+you run "terraform init" in the future.
+
 Terraform has been successfully initialized!
+
+You may now begin working with Terraform. Try running "terraform plan" to see
+any changes that are required for your infrastructure. All Terraform commands
+should now work.
+
+If you ever set or change modules or backend configuration for Terraform,
+rerun this command to reinitialize your working directory. If you forget, other
+commands will detect it and remind you to do so if necessary.
 ```
 
-### Step 2: Deploy Using the Script
+Terraform is now ready to manage infrastructure for your Digital Twin.
 
-Mac/Linux:
+### **2. Deploy Using the Script**
+
+You can now deploy *everything* automatically using the deployment scripts created in this branch.
+
+#### **Mac/Linux**
 
 ```bash
 ./scripts/deploy.sh dev
 ```
 
-Windows PowerShell:
+#### **Windows PowerShell**
 
 ```powershell
 .\scripts\deploy.ps1 -Environment dev
 ```
 
-The script performs:
+The script performs the full pipeline:
 
-1. Lambda packaging
-2. Terraform workspace creation
-3. Full infrastructure deployment
-4. Frontend build & S3 upload
-5. Summary URLs printed to screen
+1. Builds and packages the Lambda function
+2. Creates or selects the correct Terraform workspace
+3. Applies the Terraform infrastructure
+4. Builds your frontend
+5. Uploads the static site to S3
+6. Prints all deployment URLs (CloudFront, API Gateway, etc.)
 
-### Step 3: Test Your Development Environment
+### **3. Test the Deployed Dev Environment**
 
-1. Open the CloudFront URL in your browser
-2. Confirm the UI loads correctly
-3. Test the chat functionality
+Once deployment completes:
 
-Your **dev environment is now live**, deployed entirely through automated scripts.
+1. Open the **CloudFront URL** displayed in the script’s output
+2. Confirm the frontend loads correctly
+3. Test the chat functionality to verify end-to-end behaviour
+
+If everything works, your **development environment is now fully operational**, deployed entirely through automated scripts.
+
+## ✅ Branch Summary
+
+This branch establishes the foundation for repeatable, automated deployments. From now on, bringing up or updating the dev environment is as simple as running:
+
+```bash
+./scripts/deploy.sh dev
+```
+
+(or the PowerShell equivalent on Windows)
+
+This ensures consistent deployments and prepares you for the CI/CD automation in upcoming branches.
