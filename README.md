@@ -1,86 +1,162 @@
-# 🧹 **Clean Up Existing Infrastructure — Branch Overview**
+# 🗂️ **Initialize Git Repository — Branch Overview**
 
-This branch prepares the project for the next phase: implementing **CI/CD with GitHub Actions**.
-Before automation can manage the Digital Twin infrastructure, the AWS environment must be reset to a clean baseline.
-This ensures Terraform and GitHub Actions can deploy new dev/test/prod environments without conflicts or leftover resources.
+This branch prepares the project for source control and later CI/CD automation.
+It guides the user through setting up `.gitignore`, initialising Git from a clean state, configuring user details, and pushing the Digital Twin project to GitHub.
 
-## **Stage 1: Destroy All Environments**
+## **Stage 1: Create a Complete `.gitignore`**
 
-Use the destruction scripts created in the Terraform project to remove the development, test, and production environments.
+Ensure the root `.gitignore` (`twin/.gitignore`) contains all required exclusions, including Terraform state, Lambda artefacts, environment files, frontend build outputs, Python caches, and AWS credentials.
+
+```gitignore
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+terraform.tfstate.d/
+*.tfvars.secret
+
+# Lambda packages
+lambda-deployment.zip
+lambda-package/
+
+# Memory storage (conversation history)
+memory/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Node
+node_modules/
+out/
+.next/
+*.log
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# AWS
+.aws/
+```
+
+This ensures sensitive files, generated artefacts, and platform-specific clutter do not enter version control.
+
+## **Stage 2: Create Example Environment File**
+
+Provide a template `.env.example` to document required environment variables without exposing secrets.
+
+Create the file at `twin/.env.example`:
+
+```bash
+# AWS Configuration
+AWS_ACCOUNT_ID=your_12_digit_account_id
+DEFAULT_AWS_REGION=us-east-1
+
+# Project Configuration
+PROJECT_NAME=twin
+```
+
+This file will serve as the basis for `.env` files used during deployment.
+
+## **Stage 3: Initialise Git in a Clean State**
+
+Remove any nested git repositories created by tools such as `create-next-app` or `uv`.
 
 ### Mac/Linux
 
 ```bash
-./scripts/destroy.sh dev
-./scripts/destroy.sh test
-./scripts/destroy.sh prod    # only if you previously created prod
+cd twin
+
+rm -rf frontend/.git backend/.git 2>/dev/null
+
+git init -b main
+
+# If your Git version does not support -b:
+# git init
+# git checkout -b main
+
+git config user.name "Your Name"
+git config user.email "your.email@example.com"
 ```
 
-### Windows PowerShell
+### Windows (PowerShell)
 
 ```powershell
-.\scripts\destroy.ps1 -Environment dev
-.\scripts\destroy.ps1 -Environment test
-.\scripts\destroy.ps1 -Environment prod   # only if created
+cd twin
+
+Remove-Item -Path frontend/.git -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -Path backend/.git -Recurse -Force -ErrorAction SilentlyContinue
+
+git init -b main
+
+# If -b is not supported:
+# git init
+# git checkout -b main
+
+git config user.name "Your Name"
+git config user.email "your.email@example.com"
 ```
 
-CloudFront distributions may take several minutes to complete deletion due to global propagation delays.
-
-## **Stage 2: Clean Up Terraform Workspaces**
-
-After destroying the environments, remove the Terraform workspaces to ensure CI/CD can recreate them.
+### Add and commit all files
 
 ```bash
-cd terraform
-
-terraform workspace select default
-terraform workspace delete dev
-terraform workspace delete test
-terraform workspace delete prod
-
-cd ..
+git add .
+git commit -m "Initial commit: Digital Twin infrastructure and application"
 ```
 
-Only delete workspaces that actually exist.
+Your repository is now initialised with a clean history and correct root-level structure.
 
-## **Stage 3: Verify Clean State in AWS**
+## **Stage 4: Create a New GitHub Repository**
 
-Before proceeding, verify that all Digital Twin resources have been removed.
+1. Navigate to [https://github.com](https://github.com)
 
-### Lambda
+2. Select **New repository**
 
-Confirm there are no functions beginning with:
-`twin-`
+3. Configure:
 
-### S3 Buckets
+   * **Repository name:** `digital-twin` (or your preferred name)
+   * **Description:** AI Digital Twin deployed on AWS with Terraform
+   * **Visibility:** Public or Private (Private recommended for personal data)
+   * **Important:** Do **not** initialise with a README, `.gitignore`, or license
 
-Ensure none of the following remain:
+4. Click **Create repository**
 
-* `twin-dev-frontend-*`
-* `twin-dev-memory-*`
-* `twin-test-frontend-*`
-* `twin-test-memory-*`
-* `twin-prod-*` (if previously created)
+GitHub will now give you a remote URL and push instructions.
 
-### API Gateway
+## **Stage 5: Push Local Repository to GitHub**
 
-There should be no APIs named:
+Replace `YOUR_USERNAME` with your GitHub username:
 
-* `twin-dev-api-gateway`
-* `twin-test-api-gateway`
-* `twin-prod-api-gateway`
+```bash
+git remote add origin https://github.com/YOUR_USERNAME/digital-twin.git
+git push -u origin main
+```
 
-### CloudFront
+If authentication is requested:
 
-Ensure there are no distributions associated with the Digital Twin frontend.
+* **Username:** your GitHub username
+* **Password:** a **Personal Access Token**
 
-### Optional Additional Checks
-
-* IAM roles or policies beginning with `twin-`
-* ACM certificates if you experimented with custom domains
-* Route 53 records (only if you previously tested custom domains)
+  * Generate at: GitHub → Settings → Developer settings → Personal access tokens
+  * Select at least the `repo` scope
 
 ## **Checkpoint**
 
-Your AWS environment is now fully reset and ready for the next stage of the project.
-With all manual and Terraform-managed resources removed, the CI/CD pipeline can begin managing deployments cleanly and consistently.
+Your Digital Twin project is now:
+
+* Version-controlled
+* Cleanly initialised
+* Structured for collaboration
+* Ready for GitHub Actions and full CI/CD in the next stages
