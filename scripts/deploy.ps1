@@ -32,16 +32,9 @@ if (-not (terraform workspace list | Select-String $Environment)) {
 
 # Use prod.tfvars for production
 if ($Environment -eq "prod") {
-    terraform apply `
-        -var-file=prod.tfvars `
-        -var="project_name=$ProjectName" `
-        -var="environment=$Environment" `
-        -auto-approve
+    terraform apply -var-file=prod.tfvars -var="project_name=$ProjectName" -var="environment=$Environment" -auto-approve
 } else {
-    terraform apply `
-        -var="project_name=$ProjectName" `
-        -var="environment=$Environment" `
-        -auto-approve
+    terraform apply -var="project_name=$ProjectName" -var="environment=$Environment" -auto-approve
 }
 
 # Get Terraform outputs
