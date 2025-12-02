@@ -21,12 +21,12 @@ export default function Home() {
           
           {/* Page title */}
           <h1 className="text-4xl font-bold text-center text-gray-800 mb-2">
-            AI in Production
+            Ch3rry Pi3
           </h1>
 
           {/* Subtitle */}
           <p className="text-center text-gray-600 mb-8">
-            Deploy your Digital Twin to the cloud
+            This AI chatbot serves as Roger J. Campbell's Digital Twin
           </p>
 
           {/* Chat container with fixed height */}
