@@ -12,7 +12,7 @@ By the end of this branch:
 
 ## Part 1: Create AWS IAM Role for GitHub Actions (OIDC)
 
-### Stage 1: Define the OIDC Role in Terraform
+### Step 1: Define the OIDC Role in Terraform
 
 Create `terraform/github-oidc.tf`:
 
@@ -161,7 +161,7 @@ output "github_actions_role_arn" {
 }
 ```
 
-### Stage 2: Check for an Existing GitHub OIDC Provider
+### Step 2: Check for an Existing GitHub OIDC Provider
 
 From the `terraform/` directory, ensure you are on the **default workspace**:
 
@@ -189,7 +189,7 @@ aws iam list-open-id-connect-providers | Select-String "token.actions.githubuser
   then the provider already exists (you will need to **import** it).
 * If you see nothing, **Terraform will create it** for you in Scenario A.
 
-### Stage 3: (Optional) Import Existing OIDC Provider
+### Step 3: (Optional) Import Existing OIDC Provider
 
 If the provider already exists, import it into Terraform state **before** applying.
 
@@ -221,7 +221,7 @@ Write-Host "Your AWS Account ID is: $awsAccountId"
 
 ## Part 2: Apply GitHub OIDC Resources
 
-### Stage 1: Scenario A – OIDC Provider Does **Not** Exist
+### Step 1: Scenario A – OIDC Provider Does **Not** Exist
 
 Use this if the earlier check returned **no** existing provider.
 
@@ -272,7 +272,7 @@ terraform apply `
   -var="github_repository=YOUR_GITHUB_USERNAME/digital-twin"
 ```
 
-### Stage 2: Scenario B – OIDC Provider Already Imported
+### Step 2: Scenario B – OIDC Provider Already Imported
 
 Use this if you previously imported the OIDC provider via `terraform import`.
 
@@ -319,7 +319,7 @@ terraform apply `
   -var="github_repository=YOUR_GITHUB_USERNAME/your-repo-name"
 ```
 
-### Stage 3: Capture Role ARN and Clean Up Setup File
+### Step 3: Capture Role ARN and Clean Up Setup File
 
 After a successful apply:
 
@@ -349,7 +349,7 @@ Remove-Item github-oidc.tf
 
 ## Part 3: Configure Terraform Backend (S3)
 
-### Stage 1: Configure S3 Backend for Terraform State
+### Step 1: Configure S3 Backend for Terraform State
 
 Create `terraform/backend.tf`:
 
@@ -368,7 +368,7 @@ This tells Terraform to use **S3** for its state, but the concrete values (bucke
 
 ## Part 4: Add GitHub Repository Secrets
 
-### Stage 1: Add Required Secrets in GitHub
+### Step 1: Add Required Secrets in GitHub
 
 1. Open your GitHub repository in the browser.
 2. Go to **Settings**.
@@ -392,7 +392,7 @@ This tells Terraform to use **S3** for its state, but the concrete values (bucke
 * Value: Your 12-digit AWS account ID
   e.g. `123456789012`
 
-### Stage 2: Verify Secrets
+### Step 2: Verify Secrets
 
 After adding them, you should see **three** repository secrets:
 
