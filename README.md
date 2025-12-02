@@ -7,7 +7,7 @@ It includes destroying all deployment environments, reviewing remaining costs, a
 
 Before removing backend resources, ensure all deployed environments have been destroyed using GitHub Actions.
 
-### Stage 1: Destroy the Dev Environment
+### Step 1: Destroy the Dev Environment
 
 1. Go to your GitHub repository
 2. Click the **Actions** tab
@@ -20,7 +20,7 @@ Before removing backend resources, ensure all deployed environments have been de
 6. Run the workflow
 7. Wait for it to complete successfully
 
-### Stage 2: Destroy the Test Environment
+### Step 2: Destroy the Test Environment
 
 If a test environment exists:
 
@@ -31,7 +31,7 @@ If a test environment exists:
    * Confirm: type `test`
 3. Run and wait for completion
 
-### Stage 3: Destroy the Production Environment (If Applicable)
+### Step 3: Destroy the Production Environment (If Applicable)
 
 If you deployed a production environment:
 
@@ -48,7 +48,7 @@ Your AWS account should now have **no active application infrastructure** (Lambd
 
 The GitHub Actions integration creates several backend resources used for Terraform state and CI/CD authentication. These incur minimal ongoing cost.
 
-### Stage 1: Review Remaining Cost
+### Step 1: Review Remaining Cost
 
 After application infrastructure is destroyed, the remaining AWS resources are:
 
@@ -66,7 +66,7 @@ If, however, you want a **full teardown**, continue below.
 
 ## Part 3: Remove GitHub Actions IAM and State Resources
 
-### Stage 1: Delete the IAM Role
+### Step 1: Delete the IAM Role
 
 Only remove the IAM role if you are completely finished with the course and no longer want GitHub Actions to interact with AWS.
 
@@ -91,7 +91,7 @@ aws iam delete-role-policy --role-name github-actions-twin-deploy --policy-name 
 aws iam delete-role --role-name github-actions-twin-deploy
 ```
 
-### Stage 2: Delete Terraform State Bucket
+### Step 2: Delete Terraform State Bucket
 
 ```bash
 AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
@@ -100,7 +100,7 @@ aws s3 rm s3://twin-terraform-state-${AWS_ACCOUNT_ID} --recursive
 aws s3 rb s3://twin-terraform-state-${AWS_ACCOUNT_ID}
 ```
 
-### Stage 3: Delete DynamoDB Lock Table
+### Step 3: Delete DynamoDB Lock Table
 
 ```bash
 aws dynamodb delete-table --table-name twin-terraform-locks
