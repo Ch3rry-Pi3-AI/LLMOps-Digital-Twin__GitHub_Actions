@@ -7,7 +7,7 @@ It includes destroying all deployment environments, reviewing remaining costs, a
 
 Before removing backend resources, ensure all deployed environments have been destroyed using GitHub Actions.
 
-### Stage 1: Destroy the Dev Environment
+### Step 1: Destroy the Dev Environment
 
 1. Go to your GitHub repository
 2. Click the **Actions** tab
