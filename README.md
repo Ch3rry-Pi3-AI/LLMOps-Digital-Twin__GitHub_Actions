@@ -5,7 +5,7 @@ The updates ensure seamless chat interaction, optional custom avatar support, an
 
 ## Part 1: Fix Input Focus Behaviour
 
-### Stage 1: Understand the Issue
+### Step 1: Understand the Issue
 
 Previously, when using the Digital Twin chat interface:
 
@@ -15,7 +15,7 @@ Previously, when using the Digital Twin chat interface:
 
 The goal was to ensure that after every assistant response, the input field automatically refocused, allowing smooth, uninterrupted conversation.
 
-### Stage 2: Implement the Input Focus Fix
+### Step 2: Implement the Input Focus Fix
 
 The updated component now:
 
@@ -35,7 +35,7 @@ You no longer have to click — the input field stays active automatically.
 
 ## Part 2: Add Optional Avatar Support
 
-### Stage 1: Add Avatar File
+### Step 1: Add Avatar File
 
 Users may provide their own avatar:
 
@@ -57,7 +57,7 @@ If the avatar exists, it will automatically:
 
 If no avatar is present, the interface gracefully falls back to the default `Bot` icon.
 
-### Stage 2: Avatar Detection Logic
+### Step 2: Avatar Detection Logic
 
 The updated component checks avatar presence using:
 
@@ -69,7 +69,7 @@ This is lightweight and ensures the UI adapts dynamically.
 
 ## Part 3: Updated Digital Twin Component
 
-### Stage 1: Apply the Component Updates
+### Step 1: Apply the Component Updates
 
 The entire `twin.tsx` component has been modernised:
 
@@ -90,7 +90,7 @@ The full updated component was provided earlier and should be included as-is.
 
 ## Part 4: Add New Favicon
 
-### Stage 1: Replace Existing Favicon
+### Step 1: Replace Existing Favicon
 
 We also updated the browser tab icon (`favicon`):
 
@@ -108,7 +108,7 @@ Next.js will automatically detect and serve it.
 
 ## Part 5: Commit and Push Changes
 
-### Stage 1: Apply Git Commands
+### Step 1: Apply Git Commands
 
 Use the following commands to commit and push the UI update:
 
@@ -125,7 +125,7 @@ A push to `main` automatically triggers the GitHub Actions deployment to the **d
 
 ## Part 6: Verify the UI Fixes
 
-### Stage 1: Confirm Deployment
+### Step 1: Confirm Deployment
 
 After GitHub Actions completes:
 
@@ -138,7 +138,7 @@ After GitHub Actions completes:
 ✔ The new favicon should display in the browser tab
 ✔ The chat interface should feel smoother and more responsive
 
-### Stage 2: Validate Across Browsers
+### Step 2: Validate Across Browsers
 
 It is recommended to test on:
 
