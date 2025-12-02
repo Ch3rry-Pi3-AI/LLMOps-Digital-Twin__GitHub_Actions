@@ -3,7 +3,7 @@
 This branch prepares the project for source control and later CI/CD automation.
 It guides the user through setting up `.gitignore`, initialising Git from a clean state, configuring user details, and pushing the Digital Twin project to GitHub.
 
-## **Stage 1: Create a Complete `.gitignore`**
+## **Step 1: Create a Complete `.gitignore`**
 
 Ensure the root `.gitignore` (`twin/.gitignore`) contains all required exclusions, including Terraform state, Lambda artefacts, environment files, frontend build outputs, Python caches, and AWS credentials.
 
@@ -53,7 +53,7 @@ Thumbs.db
 
 This ensures sensitive files, generated artefacts, and platform-specific clutter do not enter version control.
 
-## **Stage 2: Create Example Environment File**
+## **Step 2: Create Example Environment File**
 
 Provide a template `.env.example` to document required environment variables without exposing secrets.
 
@@ -70,7 +70,7 @@ PROJECT_NAME=twin
 
 This file will serve as the basis for `.env` files used during deployment.
 
-## **Stage 3: Initialise Git in a Clean State**
+## **Step 3: Initialise Git in a Clean State**
 
 Remove any nested git repositories created by tools such as `create-next-app` or `uv`.
 
@@ -118,7 +118,7 @@ git commit -m "Initial commit: Digital Twin infrastructure and application"
 
 Your repository is now initialised with a clean history and correct root-level structure.
 
-## **Stage 4: Create a New GitHub Repository**
+## **Step 4: Create a New GitHub Repository**
 
 1. Navigate to [https://github.com](https://github.com)
 
@@ -135,7 +135,7 @@ Your repository is now initialised with a clean history and correct root-level s
 
 GitHub will now give you a remote URL and push instructions.
 
-## **Stage 5: Push Local Repository to GitHub**
+## **Step 5: Push Local Repository to GitHub**
 
 Replace `YOUR_USERNAME` with your GitHub username:
 
@@ -159,4 +159,4 @@ Your Digital Twin project is now:
 * Version-controlled
 * Cleanly initialised
 * Structured for collaboration
-* Ready for GitHub Actions and full CI/CD in the next stages
+* Ready for GitHub Actions and full CI/CD in the next Steps
