@@ -4,7 +4,7 @@ This branch prepares the project for the next phase: implementing **CI/CD with G
 Before automation can manage the Digital Twin infrastructure, the AWS environment must be reset to a clean baseline.
 This ensures Terraform and GitHub Actions can deploy new dev/test/prod environments without conflicts or leftover resources.
 
-## **Stage 1: Destroy All Environments**
+## **Step 1: Destroy All Environments**
 
 Use the destruction scripts created in the Terraform project to remove the development, test, and production environments.
 
@@ -26,7 +26,7 @@ Use the destruction scripts created in the Terraform project to remove the devel
 
 CloudFront distributions may take several minutes to complete deletion due to global propagation delays.
 
-## **Stage 2: Clean Up Terraform Workspaces**
+## **Step 2: Clean Up Terraform Workspaces**
 
 After destroying the environments, remove the Terraform workspaces to ensure CI/CD can recreate them.
 
@@ -43,7 +43,7 @@ cd ..
 
 Only delete workspaces that actually exist.
 
-## **Stage 3: Verify Clean State in AWS**
+## **Step 3: Verify Clean State in AWS**
 
 Before proceeding, verify that all Digital Twin resources have been removed.
 
