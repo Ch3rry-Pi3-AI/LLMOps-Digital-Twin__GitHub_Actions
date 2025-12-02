@@ -1,118 +1,134 @@
-# 🧹 Final Cleanup
+# ⚙️ **LLMOps Digital Twin — CI/CD Automation (GitHub Actions Edition)**
 
-This branch covers the complete cleanup process once you have finished deploying, testing, and experimenting with the Digital Twin project.
-It includes destroying all deployment environments, reviewing remaining costs, and removing GitHub Actions–related AWS resources if you want a full teardown.
+This repository builds on the earlier Digital Twin projects by introducing a **complete CI/CD pipeline** using **GitHub Actions**, **Terraform remote state**, and **secure AWS OIDC authentication**.
 
-## Part 1: Destroy All Environments
+The result is a streamlined, production-style automation workflow that handles deployments, environment management, and infrastructure teardown with minimal manual effort.
 
-Before removing backend resources, ensure all deployed environments have been destroyed using GitHub Actions.
+## 🎥 **Digital Twin Demo**
 
-### Step 1: Destroy the Dev Environment
+<div align="center">
+  <img src="img/demo/twin_demo.gif" width="100%" alt="Digital Twin Demo">
+</div>
 
-1. Go to your GitHub repository
-2. Click the **Actions** tab
-3. Select **Destroy Environment**
-4. Click **Run workflow**
-5. Choose:
+This repo keeps the same application logic as before; the difference is that **everything is now deployed automatically**.
 
-   * Environment: `dev`
-   * Confirm: type `dev`
-6. Run the workflow
-7. Wait for it to complete successfully
+## 🧩 **Grouped Stages**
 
-### Step 2: Destroy the Test Environment
+|  Stage | Category                 | Description                                                                                   |
+| :----: | ------------------------ | --------------------------------------------------------------------------------------------- |
+| **00** | Clean Slate              | Reset all prior Terraform state and AWS resources to ensure a controlled starting point.      |
+| **01** | GitHub Setup             | Initialise repo, apply correct `.gitignore`, add `.env.example`, connect project to GitHub.   |
+| **02** | S3 Backend Setup         | Create backend S3 bucket + DynamoDB lock table for remote Terraform state.                    |
+| **03** | GitHub OIDC + Secrets    | Create OIDC provider, IAM role for GitHub Actions, and configure repository secrets.          |
+| **04** | GitHub Actions Workflows | Add `deploy.yml` and `destroy.yml` for automated deploys and safe environment destruction.    |
+| **05** | UI Improvements          | Fix chat input focus issue, add optional avatar, update favicon.                              |
+| **06** | Final Cleanup            | Destroy all environments and optionally delete GitHub Actions IAM role and Terraform backend. |
 
-If a test environment exists:
+## 🗂️ **Project Structure**
 
-1. Open the **Destroy Environment** workflow
-2. Run workflow with:
-
-   * Environment: `test`
-   * Confirm: type `test`
-3. Run and wait for completion
-
-### Step 3: Destroy the Production Environment (If Applicable)
-
-If you deployed a production environment:
-
-1. Open **Destroy Environment** workflow
-2. Run workflow with:
-
-   * Environment: `prod`
-   * Confirm: type `prod`
-3. Wait for the destruction to complete
-
-Your AWS account should now have **no active application infrastructure** (Lambda, API Gateway, S3 frontend, CloudFront, etc.).
-
-## Part 2: Clean Up GitHub Actions Resources
-
-The GitHub Actions integration creates several backend resources used for Terraform state and CI/CD authentication. These incur minimal ongoing cost.
-
-### Step 1: Review Remaining Cost
-
-After application infrastructure is destroyed, the remaining AWS resources are:
-
-| Resource                                | Purpose                       | Approx. Cost                      |
-| --------------------------------------- | ----------------------------- | --------------------------------- |
-| IAM Role (`github-actions-twin-deploy`) | GitHub OIDC authentication    | **Free**                          |
-| S3 Bucket (`twin-terraform-state-*`)    | Stores Terraform state        | ~**$0.02/month**                  |
-| DynamoDB Table (`twin-terraform-locks`) | Manages Terraform state locks | **$0.00/month** (PAY_PER_REQUEST) |
-
-**Total estimated monthly cost if left in place: < $0.05**
-
-If you want to stop here, it's safe and extremely low-cost.
-
-If, however, you want a **full teardown**, continue below.
-
-## Part 3: Remove GitHub Actions IAM and State Resources
-
-### Step 1: Delete the IAM Role
-
-Only remove the IAM role if you are completely finished with the course and no longer want GitHub Actions to interact with AWS.
-
-Run the following:
-
-```bash
-# 1. Detach all policies from the GitHub Actions role
-aws iam detach-role-policy --role-name github-actions-twin-deploy --policy-arn arn:aws:iam::aws:policy/AWSLambda_FullAccess
-aws iam detach-role-policy --role-name github-actions-twin-deploy --policy-arn arn:aws:iam::aws:policy/AmazonS3FullAccess
-aws iam detach-role-policy --role-name github-actions-twin-deploy --policy-arn arn:aws:iam::aws:policy/AmazonAPIGatewayAdministrator
-aws iam detach-role-policy --role-name github-actions-twin-deploy --policy-arn arn:aws:iam::aws:policy/CloudFrontFullAccess
-aws iam detach-role-policy --role-name github-actions-twin-deploy --policy-arn arn:aws:iam::aws:policy/IAMReadOnlyAccess
-aws iam detach-role-policy --role-name github-actions-twin-deploy --policy-arn arn:aws:iam::aws:policy/AmazonBedrockFullAccess
-aws iam detach-role-policy --role-name github-actions-twin-deploy --policy-arn arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess
-aws iam detach-role-policy --role-name github-actions-twin-deploy --policy-arn arn:aws:iam::aws:policy/AWSCertificateManagerFullAccess
-aws iam detach-role-policy --role-name github-actions-twin-deploy --policy-arn arn:aws:iam::aws:policy/AmazonRoute53FullAccess
-
-# Remove custom inline policy
-aws iam delete-role-policy --role-name github-actions-twin-deploy --policy-name github-actions-additional
-
-# Delete the role
-aws iam delete-role --role-name github-actions-twin-deploy
+```
+LLMOps-Digital-Twin__GitHub_Actions/
+├── backend/
+├── frontend/
+│   ├── components/twin.tsx      (input focus fix + avatar support)
+│   ├── public/favicon.*         (updated favicon)
+│   └── public/avatar.png        (optional)
+├── terraform/
+│   ├── backend.tf               (S3 backend config stub)
+│   ├── main.tf / variables.tf
+│   ├── outputs.tf
+│   └── *.tfvars
+├── scripts/
+│   ├── deploy.sh / deploy.ps1
+│   ├── destroy.sh / destroy.ps1
+├── .github/
+│   └── workflows/
+│       ├── deploy.yml
+│       └── destroy.yml
+├── img/demo/twin_demo.gif
+└── README.md
 ```
 
-### Step 2: Delete Terraform State Bucket
+## 🧠 **Core Components**
 
-```bash
-AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+### 🔐 Secure AWS Authentication (OIDC)
 
-aws s3 rm s3://twin-terraform-state-${AWS_ACCOUNT_ID} --recursive
-aws s3 rb s3://twin-terraform-state-${AWS_ACCOUNT_ID}
+GitHub Actions authenticates with AWS using **OIDC**, removing the need for access keys.
+A one-time Terraform file creates:
+
+* GitHub OIDC provider
+* IAM role (`github-actions-twin-deploy`)
+* Policy attachments for Lambda, S3, API Gateway, CloudFront, DynamoDB, ACM, Route53, IAM (read + needed write)
+
+The repo uses three secrets:
+
+* `AWS_ROLE_ARN`
+* `DEFAULT_AWS_REGION`
+* `AWS_ACCOUNT_ID`
+
+### 🗳️ Remote Terraform State (S3 + DynamoDB)
+
+A one-time `backend-setup.tf` creates:
+
+* An encrypted, versioned S3 bucket
+* A DynamoDB lock table
+
+Then Terraform is switched to:
+
+```hcl
+terraform {
+  backend "s3" {}
+}
 ```
 
-### Step 3: Delete DynamoDB Lock Table
+All backend values are passed in by the deployment scripts.
 
-```bash
-aws dynamodb delete-table --table-name twin-terraform-locks
-```
+### 🚀 GitHub Actions CI/CD
 
-## Part 4: Completion Checkpoint
+Two workflows live in `.github/workflows/`:
 
-Once all steps are complete:
+#### `deploy.yml`
 
-✔ All environments (dev, test, prod) are destroyed
-✔ GitHub Actions no longer has access to AWS
-✔ Terraform state storage (S3 + DynamoDB) is fully removed
-✔ Your AWS account returns to zero cost
+Handles:
 
-Your Digital Twin CI/CD system has now been fully decommissioned.
+* OIDC authentication
+* Terraform init/apply
+* Lambda packaging
+* Frontend build + S3 upload
+* CloudFront invalidation
+* URL output (CloudFront, API Gateway, frontend bucket)
+
+Triggered by:
+
+* Push to `main` → deploys dev automatically
+* Manual run for `test` or `prod`
+
+#### `destroy.yml`
+
+Handles:
+
+* Confirmation step
+* Terraform destroy
+* S3 emptying
+* Safe teardown
+
+Used to destroy `dev`, `test`, or `prod`.
+
+### 💬 UI Enhancements
+
+Inside `frontend/components/twin.tsx`:
+
+* **Input box automatically regains focus** after each reply (fixes the annoying UX issue).
+* **Optional avatar** at `frontend/public/avatar.png`.
+* **Updated favicon** for a more polished UI.
+
+## 🗑️ **Final Cleanup**
+
+You may remove:
+
+1. All environments using **Destroy Environment** workflow
+2. GitHub Actions IAM role
+3. Terraform state bucket
+4. DynamoDB lock table
+
+Ongoing costs if left in place: **< $0.05/month**.
