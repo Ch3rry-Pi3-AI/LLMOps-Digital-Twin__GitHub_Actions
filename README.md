@@ -1,404 +1,164 @@
-# 🔐 Configure GitHub Repository Secrets & OIDC Role
+# ⚙️ Create GitHub Actions Workflows
 
-This branch configures **secure authentication between GitHub Actions and AWS** using **OpenID Connect (OIDC)**, and then wires that into your GitHub repository via **encrypted repository secrets**.
+This branch establishes automated CI/CD for the Digital Twin project using GitHub Actions and AWS OIDC.
+It introduces the standard workflow directory structure and defines both deployment and destruction pipelines.
+These workflows integrate tightly with the Terraform-based infrastructure created earlier.
 
-By the end of this branch:
+## Part 1: Create GitHub Actions Workflow Directory
 
-* GitHub Actions will assume an **IAM role** via OIDC (no long-lived AWS keys).
-* Terraform will know about that role.
-* Your GitHub repo will have the correct **AWS secrets** configured for CI/CD.
+### Stage 1: Create `.github/workflows/`
 
+Set up the directory structure required for GitHub Actions:
 
+1. In Cursor’s Explorer, right-click within the project
+2. Select **New Folder** and name it `.github`
+3. Right-click the `.github` folder
+4. Select **New Folder**
+5. Name it `workflows`
 
-## Part 1: Create AWS IAM Role for GitHub Actions (OIDC)
+Your project should now include:
 
-### Stage 1: Define the OIDC Role in Terraform
-
-Create `terraform/github-oidc.tf`:
-
-```hcl
-# This creates an IAM role that GitHub Actions can assume
-# Run this once, then you can remove the file
-
-variable "github_repository" {
-  description = "GitHub repository in format 'owner/repo'"
-  type        = string
-}
-
-# Note: aws_caller_identity.current is already defined in main.tf
-
-# GitHub OIDC Provider
-# Note: If this already exists in your account, you'll need to import it:
-# terraform import aws_iam_openid_connect_provider.github arn:aws:iam::ACCOUNT_ID:oidc-provider/token.actions.githubusercontent.com
-resource "aws_iam_openid_connect_provider" "github" {
-  url = "https://token.actions.githubusercontent.com"
-  
-  client_id_list = [
-    "sts.amazonaws.com"
-  ]
-  
-  # This thumbprint is from GitHub's documentation
-  # Verify current value at: https://github.blog/changelog/2023-06-27-github-actions-update-on-oidc-integration-with-aws/
-  thumbprint_list = [
-    "1b511abead59c6ce207077c0bf0e0043b1382612"
-  ]
-}
-
-# IAM Role for GitHub Actions
-resource "aws_iam_role" "github_actions" {
-  name = "github-actions-twin-deploy"
-  
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Principal = {
-          Federated = aws_iam_openid_connect_provider.github.arn
-        }
-        Action = "sts:AssumeRoleWithWebIdentity"
-        Condition = {
-          StringEquals = {
-            "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
-          }
-          StringLike = {
-            "token.actions.githubusercontent.com:sub" = "repo:${var.github_repository}:*"
-          }
-        }
-      }
-    ]
-  })
-  
-  tags = {
-    Name        = "GitHub Actions Deploy Role"
-    Repository  = var.github_repository
-    ManagedBy   = "terraform"
-  }
-}
-
-# Attach necessary policies
-resource "aws_iam_role_policy_attachment" "github_lambda" {
-  policy_arn = "arn:aws:iam::aws:policy/AWSLambda_FullAccess"
-  role       = aws_iam_role.github_actions.name
-}
-
-resource "aws_iam_role_policy_attachment" "github_s3" {
-  policy_arn = "arn:aws:iam::aws:policy/AmazonS3FullAccess"
-  role       = aws_iam_role.github_actions.name
-}
-
-resource "aws_iam_role_policy_attachment" "github_apigateway" {
-  policy_arn = "arn:aws:iam::aws:policy/AmazonAPIGatewayAdministrator"
-  role       = aws_iam_role.github_actions.name
-}
-
-resource "aws_iam_role_policy_attachment" "github_cloudfront" {
-  policy_arn = "arn:aws:iam::aws:policy/CloudFrontFullAccess"
-  role       = aws_iam_role.github_actions.name
-}
-
-resource "aws_iam_role_policy_attachment" "github_iam_read" {
-  policy_arn = "arn:aws:iam::aws:policy/IAMReadOnlyAccess"
-  role       = aws_iam_role.github_actions.name
-}
-
-resource "aws_iam_role_policy_attachment" "github_bedrock" {
-  policy_arn = "arn:aws:iam::aws:policy/AmazonBedrockFullAccess"
-  role       = aws_iam_role.github_actions.name
-}
-
-resource "aws_iam_role_policy_attachment" "github_dynamodb" {
-  policy_arn = "arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess"
-  role       = aws_iam_role.github_actions.name
-}
-
-resource "aws_iam_role_policy_attachment" "github_acm" {
-  policy_arn = "arn:aws:iam::aws:policy/AWSCertificateManagerFullAccess"
-  role       = aws_iam_role.github_actions.name
-}
-
-resource "aws_iam_role_policy_attachment" "github_route53" {
-  policy_arn = "arn:aws:iam::aws:policy/AmazonRoute53FullAccess"
-  role       = aws_iam_role.github_actions.name
-}
-
-# Custom policy for additional permissions
-resource "aws_iam_role_policy" "github_additional" {
-  name = "github-actions-additional"
-  role = aws_iam_role.github_actions.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Action = [
-          "iam:CreateRole",
-          "iam:DeleteRole",
-          "iam:AttachRolePolicy",
-          "iam:DetachRolePolicy",
-          "iam:PutRolePolicy",
-          "iam:DeleteRolePolicy",
-          "iam:GetRole",
-          "iam:GetRolePolicy",
-          "iam:ListRolePolicies",
-          "iam:ListAttachedRolePolicies",
-          "iam:UpdateAssumeRolePolicy",
-          "iam:PassRole",
-          "iam:TagRole",
-          "iam:UntagRole",
-          "iam:ListInstanceProfilesForRole",
-          "sts:GetCallerIdentity"
-        ]
-        Resource = "*"
-      }
-    ]
-  })
-}
-
-output "github_actions_role_arn" {
-  value = aws_iam_role.github_actions.arn
-}
+```
+.github/
+└── workflows/
 ```
 
-### Stage 2: Check for an Existing GitHub OIDC Provider
+GitHub automatically scans this location for workflow files.
 
-From the `terraform/` directory, ensure you are on the **default workspace**:
+## Part 2: Create Deployment Workflow
+
+### Stage 1: Add `deploy.yml`
+
+Create the deployment workflow at:
+
+```
+.github/workflows/deploy.yml
+```
+
+This workflow performs the following:
+
+* Automatically deploys on every push to `main`, or manually via workflow dispatch
+* Authenticates with AWS using OpenID Connect
+* Runs the Python backend build
+* Applies Terraform for environment provisioning
+* Builds and uploads the frontend to S3
+* Invalidates CloudFront cache
+* Outputs the deployment URLs for verification
+
+Use the exact workflow YAML content provided in the instructions.
+
+## Part 3: Create Destroy Workflow
+
+### Stage 1: Add `destroy.yml`
+
+Create the destruction workflow at:
+
+```
+.github/workflows/destroy.yml
+```
+
+This workflow:
+
+* Is manually triggered only
+* Requires explicit typed confirmation to prevent accidental deletions
+* Authenticates with AWS using OIDC
+* Executes `scripts/destroy.sh` to remove infrastructure
+* Cleans up all resources for dev, test, or prod
+* Prints confirmation when the environment is fully torn down
+
+Insert the YAML content exactly as given.
+
+## Part 4: Commit and Push Workflows
+
+### Stage 1: Commit and publish workflow files
+
+Use the following commands to add and push all changes:
 
 ```bash
-cd terraform
-terraform workspace select default
+git add .
+git status
+git commit -m "Add GitHub Actions deployment and destroy workflows"
+git push
 ```
 
-Now check if the GitHub OIDC provider already exists in your AWS account.
-
-**Mac/Linux:**
+Once pushed, you will see both workflows under:
 
-```bash
-aws iam list-open-id-connect-providers | grep token.actions.githubusercontent.com
-```
+**GitHub → Actions**
 
-**Windows (PowerShell):**
+They will now be active and ready for use.
 
-```powershell
-aws iam list-open-id-connect-providers | Select-String "token.actions.githubusercontent.com"
-```
+## Part 5: Test the CI/CD Workflows
 
-* If you see an ARN like
-  `arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com`
-  then the provider already exists (you will need to **import** it).
-* If you see nothing, **Terraform will create it** for you in Scenario A.
+### Stage 1: Automatic Dev Deployment
 
-### Stage 3: (Optional) Import Existing OIDC Provider
+Since the workflows trigger on every push to the `main` branch:
 
-If the provider already exists, import it into Terraform state **before** applying.
+1. Open your GitHub repository
+2. Select the **Actions** tab
+3. You should see **Deploy Digital Twin** running automatically
+4. Open the workflow to follow its progress
+5. Wait for it to complete (5–10 minutes)
 
-**Mac/Linux:**
+After completion:
 
-```bash
-# Get your AWS Account ID
-AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-echo "Your AWS Account ID is: $AWS_ACCOUNT_ID"
-
-# Only run this if the provider already exists:
-# terraform import aws_iam_openid_connect_provider.github arn:aws:iam::${AWS_ACCOUNT_ID}:oidc-provider/token.actions.githubusercontent.com
-```
-
-**Windows (PowerShell):**
-
-```powershell
-# Get your AWS Account ID
-$awsAccountId = aws sts get-caller-identity --query Account --output text
-Write-Host "Your AWS Account ID is: $awsAccountId"
-
-# Only run this if the provider already exists:
-# terraform import aws_iam_openid_connect_provider.github "arn:aws:iam::${awsAccountId}:oidc-provider/token.actions.githubusercontent.com"
-```
-
-> Note: During import you will be prompted for `var.github_repository`. Use the format `your-username/your-repo-name` (no URL prefix).
-
-
-
-## Part 2: Apply GitHub OIDC Resources
-
-### Stage 1: Scenario A – OIDC Provider Does **Not** Exist
-
-Use this if the earlier check returned **no** existing provider.
-
-**Important:**
-
-* Replace `YOUR_GITHUB_USERNAME` with your actual GitHub username.
-* The `github_repository` **must** be in the form `username/repo-name`
-  e.g. `johndoe/digital-twin`
-* Do **not** include `https://github.com/` or you will get cryptic errors.
-
-**Mac/Linux:**
-
-```bash
-# Apply ALL resources including OIDC provider (one long command)
-terraform apply \
-  -target=aws_iam_openid_connect_provider.github \
-  -target=aws_iam_role.github_actions \
-  -target=aws_iam_role_policy_attachment.github_lambda \
-  -target=aws_iam_role_policy_attachment.github_s3 \
-  -target=aws_iam_role_policy_attachment.github_apigateway \
-  -target=aws_iam_role_policy_attachment.github_cloudfront \
-  -target=aws_iam_role_policy_attachment.github_iam_read \
-  -target=aws_iam_role_policy_attachment.github_bedrock \
-  -target=aws_iam_role_policy_attachment.github_dynamodb \
-  -target=aws_iam_role_policy_attachment.github_acm \
-  -target=aws_iam_role_policy_attachment.github_route53 \
-  -target=aws_iam_role_policy.github_additional \
-  -var="github_repository=YOUR_GITHUB_USERNAME/digital-twin"
-```
+6. Expand the **Deployment Summary** step
+7. You will see the environment URLs:
 
-**Windows (PowerShell):**
+* CloudFront distribution URL
+* API Gateway endpoint
+* Frontend bucket name
 
-```powershell
-# Apply ALL resources including OIDC provider (one long command)
-terraform apply `
-  -target="aws_iam_openid_connect_provider.github" `
-  -target="aws_iam_role.github_actions" `
-  -target="aws_iam_role_policy_attachment.github_lambda" `
-  -target="aws_iam_role_policy_attachment.github_s3" `
-  -target="aws_iam_role_policy_attachment.github_apigateway" `
-  -target="aws_iam_role_policy_attachment.github_cloudfront" `
-  -target="aws_iam_role_policy_attachment.github_iam_read" `
-  -target="aws_iam_role_policy_attachment.github_bedrock" `
-  -target="aws_iam_role_policy_attachment.github_dynamodb" `
-  -target="aws_iam_role_policy_attachment.github_acm" `
-  -target="aws_iam_role_policy_attachment.github_route53" `
-  -target="aws_iam_role_policy.github_additional" `
-  -var="github_repository=YOUR_GITHUB_USERNAME/digital-twin"
-```
+8. Open the CloudFront URL in your browser to load the Digital Twin frontend.
 
-### Stage 2: Scenario B – OIDC Provider Already Imported
+### Stage 2: Manual Test Deployment
 
-Use this if you previously imported the OIDC provider via `terraform import`.
+To deploy to the test environment:
 
-**Important:**
+1. Go to the **Actions** tab
+2. Select **Deploy Digital Twin**
+3. Click **Run workflow**
+4. Enter:
 
-* Use the **same** `github_repository` value you provided during import
-  e.g. `your-username/digital-twin`.
+   * Branch: `main`
+   * Environment: `test`
+5. Run the workflow
+6. Follow the real-time logs until completion
 
-**Mac/Linux:**
+### Stage 3: Manual Production Deployment
 
-```bash
-# Apply ONLY the IAM role and policies (NOT the OIDC provider) - one long command
-terraform apply \
-  -target=aws_iam_role.github_actions \
-  -target=aws_iam_role_policy_attachment.github_lambda \
-  -target=aws_iam_role_policy_attachment.github_s3 \
-  -target=aws_iam_role_policy_attachment.github_apigateway \
-  -target=aws_iam_role_policy_attachment.github_cloudfront \
-  -target=aws_iam_role_policy_attachment.github_iam_read \
-  -target=aws_iam_role_policy_attachment.github_bedrock \
-  -target=aws_iam_role_policy_attachment.github_dynamodb \
-  -target=aws_iam_role_policy_attachment.github_acm \
-  -target=aws_iam_role_policy_attachment.github_route53 \
-  -target=aws_iam_role_policy.github_additional \
-  -var="github_repository=YOUR_GITHUB_USERNAME/your-repo-name"
-```
+If your project includes a custom domain:
 
-**Windows (PowerShell):**
+1. Go to **Actions**
+2. Open **Deploy Digital Twin**
+3. Click **Run workflow**
+4. Select:
 
-```powershell
-# Apply ONLY the IAM role and policies (NOT the OIDC provider) - one long command
-terraform apply `
-  -target="aws_iam_role.github_actions" `
-  -target="aws_iam_role_policy_attachment.github_lambda" `
-  -target="aws_iam_role_policy_attachment.github_s3" `
-  -target="aws_iam_role_policy_attachment.github_apigateway" `
-  -target="aws_iam_role_policy_attachment.github_cloudfront" `
-  -target="aws_iam_role_policy_attachment.github_iam_read" `
-  -target="aws_iam_role_policy_attachment.github_bedrock" `
-  -target="aws_iam_role_policy_attachment.github_dynamodb" `
-  -target="aws_iam_role_policy_attachment.github_acm" `
-  -target="aws_iam_role_policy_attachment.github_route53" `
-  -target="aws_iam_role_policy.github_additional" `
-  -var="github_repository=YOUR_GITHUB_USERNAME/your-repo-name"
-```
+   * Branch: `main`
+   * Environment: `prod`
+5. Run the workflow
 
-### Stage 3: Capture Role ARN and Clean Up Setup File
+The production deployment may take slightly longer depending on CloudFront caching and certificate validation.
 
-After a successful apply:
+### Stage 4: Verify Each Deployment
 
-```bash
-# From terraform directory
-terraform output github_actions_role_arn
-```
+Once each environment has deployed:
 
-* Copy the output ARN (e.g. `arn:aws:iam::123456789012:role/github-actions-twin-deploy`).
-* This will be used as `AWS_ROLE_ARN` in GitHub.
+1. Review the workflow summary
+2. Copy the CloudFront URL
+3. Visit the URL in your browser
+4. Interact with your Digital Twin to confirm expected behaviour
 
-Once confirmed, you can remove the setup file:
+Your CI/CD pipeline is now fully operational across all environments.
 
-**Mac/Linux:**
+## Result
 
-```bash
-rm github-oidc.tf
-```
+This branch introduces a complete CI/CD automation layer, enabling:
 
-**Windows (PowerShell):**
+* Zero-touch deployments on push
+* Manual multi-environment deployments
+* Safe destruction workflows
+* AWS authentication using secure OIDC
+* Terraform-managed infrastructure provisioning
+* Automated frontend distribution and CloudFront invalidation
 
-```powershell
-Remove-Item github-oidc.tf
-```
-
-
-
-## Part 3: Configure Terraform Backend (S3)
-
-### Stage 1: Configure S3 Backend for Terraform State
-
-Create `terraform/backend.tf`:
-
-```hcl
-terraform {
-  backend "s3" {
-    # These values will be set by deployment scripts
-    # For local development, they can be passed via -backend-config
-  }
-}
-```
-
-This tells Terraform to use **S3** for its state, but the concrete values (bucket, key, region, DynamoDB table) are supplied at runtime by your deployment scripts via `-backend-config`.
-
-
-
-## Part 4: Add GitHub Repository Secrets
-
-### Stage 1: Add Required Secrets in GitHub
-
-1. Open your GitHub repository in the browser.
-2. Go to **Settings**.
-3. In the left sidebar, select **Secrets and variables → Actions**.
-4. Click **New repository secret** for each secret below.
-
-**Secret 1: `AWS_ROLE_ARN`**
-
-* Name: `AWS_ROLE_ARN`
-* Value: The IAM role ARN from `terraform output github_actions_role_arn`
-  e.g. `arn:aws:iam::123456789012:role/github-actions-twin-deploy`
-
-**Secret 2: `DEFAULT_AWS_REGION`**
-
-* Name: `DEFAULT_AWS_REGION`
-* Value: `us-east-1` (or your preferred AWS region, consistent with your setup)
-
-**Secret 3: `AWS_ACCOUNT_ID`**
-
-* Name: `AWS_ACCOUNT_ID`
-* Value: Your 12-digit AWS account ID
-  e.g. `123456789012`
-
-### Stage 2: Verify Secrets
-
-After adding them, you should see **three** repository secrets:
-
-* `AWS_ROLE_ARN`
-* `DEFAULT_AWS_REGION`
-* `AWS_ACCOUNT_ID`
-
-✅ **Checkpoint:**
-GitHub Actions can now **securely authenticate** to your AWS account using **OIDC + IAM role assumption**, with no long-lived AWS keys stored anywhere.
+Your Digital Twin now has a modern, reproducible, and production-ready deployment pipeline.
