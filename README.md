@@ -1,161 +1,118 @@
-# 🎨 UI Improvements: Input Focus, Avatar Support, and New Favicon
+# 🧹 Final Cleanup
 
-This branch introduces a set of frontend enhancements focused on improving user experience within the Digital Twin interface.
-The updates ensure seamless chat interaction, optional custom avatar support, and improved branding through a new favicon.
+This branch covers the complete cleanup process once you have finished deploying, testing, and experimenting with the Digital Twin project.
+It includes destroying all deployment environments, reviewing remaining costs, and removing GitHub Actions–related AWS resources if you want a full teardown.
 
-## Part 1: Fix Input Focus Behaviour
+## Part 1: Destroy All Environments
 
-### Stage 1: Understand the Issue
+Before removing backend resources, ensure all deployed environments have been destroyed using GitHub Actions.
 
-Previously, when using the Digital Twin chat interface:
+### Stage 1: Destroy the Dev Environment
 
-* Each time the assistant responded, the input box **lost focus**
-* You were forced to manually click back into the input field before typing the next message
-* This broke conversational flow and made the UI feel clunky
+1. Go to your GitHub repository
+2. Click the **Actions** tab
+3. Select **Destroy Environment**
+4. Click **Run workflow**
+5. Choose:
 
-The goal was to ensure that after every assistant response, the input field automatically refocused, allowing smooth, uninterrupted conversation.
+   * Environment: `dev`
+   * Confirm: type `dev`
+6. Run the workflow
+7. Wait for it to complete successfully
 
-### Stage 2: Implement the Input Focus Fix
+### Stage 2: Destroy the Test Environment
 
-The updated component now:
+If a test environment exists:
 
-* Stores a reference to the input element using `useRef`
-* Refocuses the input after each message send (with a small timeout to avoid race conditions)
-* Guarantees that the user can continue typing without manually clicking
+1. Open the **Destroy Environment** workflow
+2. Run workflow with:
 
-This update is implemented inside `sendMessage()`:
+   * Environment: `test`
+   * Confirm: type `test`
+3. Run and wait for completion
 
-```typescript
-setTimeout(() => {
-    inputRef.current?.focus();
-}, 100);
-```
+### Stage 3: Destroy the Production Environment (If Applicable)
 
-You no longer have to click — the input field stays active automatically.
+If you deployed a production environment:
 
-## Part 2: Add Optional Avatar Support
+1. Open **Destroy Environment** workflow
+2. Run workflow with:
 
-### Stage 1: Add Avatar File
+   * Environment: `prod`
+   * Confirm: type `prod`
+3. Wait for the destruction to complete
 
-Users may provide their own avatar:
+Your AWS account should now have **no active application infrastructure** (Lambda, API Gateway, S3 frontend, CloudFront, etc.).
 
-* Place it at:
-  `frontend/public/avatar.png`
-* Recommended:
+## Part 2: Clean Up GitHub Actions Resources
 
-  * Square (e.g., 200×200px)
-  * Under 100KB for best load performance
+The GitHub Actions integration creates several backend resources used for Terraform state and CI/CD authentication. These incur minimal ongoing cost.
 
-If the avatar exists, it will automatically:
+### Stage 1: Review Remaining Cost
 
-* Replace the generic bot icon
-* Appear in:
+After application infrastructure is destroyed, the remaining AWS resources are:
 
-  * The welcome screen
-  * Assistant message bubbles
-  * Loading “typing…” indicator
+| Resource                                | Purpose                       | Approx. Cost                      |
+| --------------------------------------- | ----------------------------- | --------------------------------- |
+| IAM Role (`github-actions-twin-deploy`) | GitHub OIDC authentication    | **Free**                          |
+| S3 Bucket (`twin-terraform-state-*`)    | Stores Terraform state        | ~**$0.02/month**                  |
+| DynamoDB Table (`twin-terraform-locks`) | Manages Terraform state locks | **$0.00/month** (PAY_PER_REQUEST) |
 
-If no avatar is present, the interface gracefully falls back to the default `Bot` icon.
+**Total estimated monthly cost if left in place: < $0.05**
 
-### Stage 2: Avatar Detection Logic
+If you want to stop here, it's safe and extremely low-cost.
 
-The updated component checks avatar presence using:
+If, however, you want a **full teardown**, continue below.
 
-```typescript
-fetch('/avatar.png', { method: 'HEAD' })
-```
+## Part 3: Remove GitHub Actions IAM and State Resources
 
-This is lightweight and ensures the UI adapts dynamically.
+### Stage 1: Delete the IAM Role
 
-## Part 3: Updated Digital Twin Component
+Only remove the IAM role if you are completely finished with the course and no longer want GitHub Actions to interact with AWS.
 
-### Stage 1: Apply the Component Updates
-
-The entire `twin.tsx` component has been modernised:
-
-* Input focus fix
-* Avatar detection & rendering
-* Cleaned-up layout
-* Improved message structure
-* Proper Tailwind styling
-* Automatic scroll-to-bottom logic
-
-All changes are contained in:
-
-```
-frontend/components/twin.tsx
-```
-
-The full updated component was provided earlier and should be included as-is.
-
-## Part 4: Add New Favicon
-
-### Stage 1: Replace Existing Favicon
-
-We also updated the browser tab icon (`favicon`):
-
-* This improves branding consistency
-* Ensures a polished look across all environments (dev, test, prod)
-* Works automatically for all deployed environments via CloudFront
-
-The new icon should be placed in:
-
-```
-frontend/public/favicon.ico
-```
-
-Next.js will automatically detect and serve it.
-
-## Part 5: Commit and Push Changes
-
-### Stage 1: Apply Git Commands
-
-Use the following commands to commit and push the UI update:
+Run the following:
 
 ```bash
-git add frontend/components/twin.tsx
-git add frontend/public/avatar.png        # Only if you added an avatar
-git add frontend/public/favicon.ico       # If you updated the favicon
+# 1. Detach all policies from the GitHub Actions role
+aws iam detach-role-policy --role-name github-actions-twin-deploy --policy-arn arn:aws:iam::aws:policy/AWSLambda_FullAccess
+aws iam detach-role-policy --role-name github-actions-twin-deploy --policy-arn arn:aws:iam::aws:policy/AmazonS3FullAccess
+aws iam detach-role-policy --role-name github-actions-twin-deploy --policy-arn arn:aws:iam::aws:policy/AmazonAPIGatewayAdministrator
+aws iam detach-role-policy --role-name github-actions-twin-deploy --policy-arn arn:aws:iam::aws:policy/CloudFrontFullAccess
+aws iam detach-role-policy --role-name github-actions-twin-deploy --policy-arn arn:aws:iam::aws:policy/IAMReadOnlyAccess
+aws iam detach-role-policy --role-name github-actions-twin-deploy --policy-arn arn:aws:iam::aws:policy/AmazonBedrockFullAccess
+aws iam detach-role-policy --role-name github-actions-twin-deploy --policy-arn arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess
+aws iam detach-role-policy --role-name github-actions-twin-deploy --policy-arn arn:aws:iam::aws:policy/AWSCertificateManagerFullAccess
+aws iam detach-role-policy --role-name github-actions-twin-deploy --policy-arn arn:aws:iam::aws:policy/AmazonRoute53FullAccess
 
-git commit -m "Fix input focus issue, add avatar support, and update favicon"
-git push
+# Remove custom inline policy
+aws iam delete-role-policy --role-name github-actions-twin-deploy --policy-name github-actions-additional
+
+# Delete the role
+aws iam delete-role --role-name github-actions-twin-deploy
 ```
 
-A push to `main` automatically triggers the GitHub Actions deployment to the **dev** environment.
+### Stage 2: Delete Terraform State Bucket
 
-## Part 6: Verify the UI Fixes
+```bash
+AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 
-### Stage 1: Confirm Deployment
+aws s3 rm s3://twin-terraform-state-${AWS_ACCOUNT_ID} --recursive
+aws s3 rb s3://twin-terraform-state-${AWS_ACCOUNT_ID}
+```
 
-After GitHub Actions completes:
+### Stage 3: Delete DynamoDB Lock Table
 
-1. Open your **dev** CloudFront URL
-2. Send a message to your Digital Twin
-3. Observe the behaviour:
+```bash
+aws dynamodb delete-table --table-name twin-terraform-locks
+```
 
-✔ The input field should immediately regain focus
-✔ The avatar should appear (if provided)
-✔ The new favicon should display in the browser tab
-✔ The chat interface should feel smoother and more responsive
+## Part 4: Completion Checkpoint
 
-### Stage 2: Validate Across Browsers
+Once all steps are complete:
 
-It is recommended to test on:
+✔ All environments (dev, test, prod) are destroyed
+✔ GitHub Actions no longer has access to AWS
+✔ Terraform state storage (S3 + DynamoDB) is fully removed
+✔ Your AWS account returns to zero cost
 
-* Chrome
-* Edge
-* Firefox
-* Safari (if applicable)
-
-This ensures consistent behaviour across environments.
-
-## Result
-
-This branch significantly improves the user experience by:
-
-* Fixing the input-focus issue that previously disrupted conversations
-* Enabling personalised branding through avatar support
-* Cleaning up the UI with improved component logic
-* Updating the favicon for a professional, polished front-end
-
-Your Digital Twin frontend now feels more natural, seamless, and personalised.
+Your Digital Twin CI/CD system has now been fully decommissioned.
