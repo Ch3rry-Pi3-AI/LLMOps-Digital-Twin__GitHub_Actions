@@ -6,7 +6,7 @@ These workflows integrate tightly with the Terraform-based infrastructure create
 
 ## Part 1: Create GitHub Actions Workflow Directory
 
-### Stage 1: Create `.github/workflows/`
+### Step 1: Create `.github/workflows/`
 
 Set up the directory structure required for GitHub Actions:
 
@@ -27,7 +27,7 @@ GitHub automatically scans this location for workflow files.
 
 ## Part 2: Create Deployment Workflow
 
-### Stage 1: Add `deploy.yml`
+### Step 1: Add `deploy.yml`
 
 Create the deployment workflow at:
 
@@ -49,7 +49,7 @@ Use the exact workflow YAML content provided in the instructions.
 
 ## Part 3: Create Destroy Workflow
 
-### Stage 1: Add `destroy.yml`
+### Step 1: Add `destroy.yml`
 
 Create the destruction workflow at:
 
@@ -70,7 +70,7 @@ Insert the YAML content exactly as given.
 
 ## Part 4: Commit and Push Workflows
 
-### Stage 1: Commit and publish workflow files
+### Step 1: Commit and publish workflow files
 
 Use the following commands to add and push all changes:
 
@@ -89,7 +89,7 @@ They will now be active and ready for use.
 
 ## Part 5: Test the CI/CD Workflows
 
-### Stage 1: Automatic Dev Deployment
+### Step 1: Automatic Dev Deployment
 
 Since the workflows trigger on every push to the `main` branch:
 
@@ -110,7 +110,7 @@ After completion:
 
 8. Open the CloudFront URL in your browser to load the Digital Twin frontend.
 
-### Stage 2: Manual Test Deployment
+### Step 2: Manual Test Deployment
 
 To deploy to the test environment:
 
@@ -124,7 +124,7 @@ To deploy to the test environment:
 5. Run the workflow
 6. Follow the real-time logs until completion
 
-### Stage 3: Manual Production Deployment
+### Step 3: Manual Production Deployment
 
 If your project includes a custom domain:
 
@@ -139,7 +139,7 @@ If your project includes a custom domain:
 
 The production deployment may take slightly longer depending on CloudFront caching and certificate validation.
 
-### Stage 4: Verify Each Deployment
+### Step 4: Verify Each Deployment
 
 Once each environment has deployed:
 
