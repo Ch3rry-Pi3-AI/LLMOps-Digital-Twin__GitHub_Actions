@@ -6,7 +6,7 @@ These resources are created once per AWS account and remain globally available.
 
 ## **Part 1: Create Remote Backend Resources**
 
-### Stage 1: Add Backend Setup File
+### Step 1: Add Backend Setup File
 
 Create the file:
 
@@ -91,7 +91,7 @@ This file defines:
 * A DynamoDB table for Terraform state locking
 * Outputs confirming creation
 
-### Stage 2: Apply Backend Resources
+### Step 2: Apply Backend Resources
 
 From the project root:
 
@@ -133,7 +133,7 @@ terraform output
 
 ## **Part 2: Clean Up Setup File**
 
-### Stage 3: Remove Setup File
+### Step 3: Remove Setup File
 
 Once the backend infrastructure exists, remove the setup file:
 
@@ -145,7 +145,7 @@ The backend bucket and lock table remain permanently available to all Terraform 
 
 ## **Part 3: Update Deployment and Destroy Scripts**
 
-### Stage 4: Update deploy.sh
+### Step 4: Update deploy.sh
 
 Locate the line:
 
@@ -167,7 +167,7 @@ terraform init -input=false \
   -backend-config="encrypt=true"
 ```
 
-### Stage 5: Update deploy.ps1
+### Step 5: Update deploy.ps1
 
 Replace the plain init line with:
 
@@ -183,7 +183,7 @@ terraform init -input=false `
   -backend-config="encrypt=true"
 ```
 
-### Stage 6: Replace destroy scripts
+### Step 6: Replace destroy scripts
 
 Update both `destroy.sh` and `destroy.ps1` with the new versions that include:
 
