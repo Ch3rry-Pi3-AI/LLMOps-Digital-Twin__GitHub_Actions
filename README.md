@@ -1,147 +1,120 @@
-# ⚙️ **LLMOps Digital Twin — CI/CD Automation (GitHub Actions Edition)**
+# LLMOps Digital Twin (AWS + GitHub Actions)
 
-This repository builds on the earlier Digital Twin projects by introducing a **complete CI/CD pipeline** using **GitHub Actions**, **Terraform remote state**, and **secure AWS OIDC authentication**.
+Terraform-first LLMOps digital twin that pairs a Next.js chat UI with a serverless FastAPI backend on AWS Bedrock. It includes CI/CD automation, remote Terraform state, and secure AWS OIDC auth so environments can be created and torn down consistently.
 
-The result is a streamlined, production-style automation workflow that handles deployments, environment management, and infrastructure teardown with minimal manual effort.
+Benefits:
+- Reproducible infra and app deployments across dev/test/prod
+- Serverless footprint with pay-per-use costs
+- Secure authentication with OIDC instead of long-lived keys
+- Portable persona and memory storage in S3
 
-## 🎥 **Digital Twin Demo**
+## Digital Twin Demo
 
 <div align="center">
   <img src="img/demo/twin_demo.gif" width="100%" alt="Digital Twin Demo">
 </div>
 
-This repo keeps the same application logic as before; the difference is that **everything is now deployed automatically**.
+## Quick Start
+1) Install prerequisites:
+   - AWS CLI (configured for an account with Bedrock access)
+   - Terraform >= 1.0
+   - Node.js 20+ (npm)
+   - Python 3.12 + uv
+   - Docker (used to build the Lambda package)
 
-## 🧩 **Grouped Stages**
-
-|  Stage | Category                 | Description                                                                                   |
-| :----: | ------------------------ | --------------------------------------------------------------------------------------------- |
-| **00** | Clean Slate              | Reset all prior Terraform state and AWS resources to ensure a controlled starting point.      |
-| **01** | GitHub Setup             | Initialise repo, apply correct `.gitignore`, add `.env.example`, connect project to GitHub.   |
-| **02** | S3 Backend Setup         | Create backend S3 bucket + DynamoDB lock table for remote Terraform state.                    |
-| **03** | GitHub OIDC + Secrets    | Create OIDC provider, IAM role for GitHub Actions, and configure repository secrets.          |
-| **04** | GitHub Actions Workflows | Add `deploy.yml` and `destroy.yml` for automated deploys and safe environment destruction.    |
-| **05** | UI Improvements          | Fix chat input focus issue, add optional avatar, update favicon.                              |
-| **06** | Final Cleanup            | Destroy all environments and optionally delete GitHub Actions IAM role and Terraform backend. |
-
-## 🗂️ **Project Structure**
-
-```
-LLMOps-Digital-Twin__GitHub_Actions/
-├── backend/
-├── frontend/
-│   ├── components/twin.tsx      (input focus fix + avatar support)
-│   ├── public/favicon.*         (updated favicon)
-│   └── public/avatar.png        (optional)
-├── terraform/
-│   ├── backend.tf               (S3 backend config stub)
-│   ├── main.tf / variables.tf
-│   ├── outputs.tf
-│   └── *.tfvars
-├── scripts/
-│   ├── deploy.sh / deploy.ps1
-│   ├── destroy.sh / destroy.ps1
-├── .github/
-│   └── workflows/
-│       ├── deploy.yml
-│       └── destroy.yml
-├── img/demo/twin_demo.gif
-└── README.md
+2) Authenticate to AWS:
+```powershell
+aws sts get-caller-identity
 ```
 
-## 🧠 **Core Components**
+3) Deploy infrastructure + app:
+```powershell
+.\scripts\deploy.ps1 -Environment dev -ProjectName twin
+```
+Or bash:
+```bash
+./scripts/deploy.sh dev twin
+```
+This builds the Lambda package, applies Terraform with the S3/DynamoDB backend, builds the Next.js static site, uploads to S3, and invalidates CloudFront.
 
-### 🔐 Secure AWS Authentication (OIDC)
+Tip: set `DEFAULT_AWS_REGION` if you do not want the default `us-east-1` region.
 
-GitHub Actions authenticates with AWS using **OIDC**, removing the need for access keys.
-A one-time Terraform file creates:
+## Architecture Overview
+```mermaid
+flowchart LR
+    User[User Browser] --> CF[CloudFront CDN]
+    CF --> S3FE[S3 Static Website]
 
-* GitHub OIDC provider
-* IAM role (`github-actions-twin-deploy`)
-* Policy attachments for Lambda, S3, API Gateway, CloudFront, DynamoDB, ACM, Route53, IAM (read + needed write)
+    User --> APIGW[API Gateway HTTP API]
+    APIGW --> Lambda[(Lambda: FastAPI + Mangum)]
+    Lambda --> Bedrock[AWS Bedrock Runtime]
+    Lambda --> S3Mem[S3 Conversation Memory]
 
-The repo uses three secrets:
-
-* `AWS_ROLE_ARN`
-* `DEFAULT_AWS_REGION`
-* `AWS_ACCOUNT_ID`
-
-### 🗳️ Remote Terraform State (S3 + DynamoDB)
-
-A one-time `backend-setup.tf` creates:
-
-* An encrypted, versioned S3 bucket
-* A DynamoDB lock table
-
-Then Terraform is switched to:
-
-```hcl
-terraform {
-  backend "s3" {}
-}
+    Route53[(Route53 + ACM)] -. optional custom domain .-> CF
 ```
 
-All backend values are passed in by the deployment scripts.
+## CI/CD Overview
+```mermaid
+flowchart LR
+    Dev[Push or Manual Dispatch] --> GHA[GitHub Actions]
+    GHA --> OIDC[OIDC AssumeRole]
+    GHA --> TF[Terraform Apply]
+    GHA --> LambdaPkg[Build Lambda Zip]
+    GHA --> FE[Next.js Build]
+    FE --> S3FE[S3 Frontend Bucket]
+    GHA --> CFInv[CloudFront Invalidation]
+```
 
-### 🚀 GitHub Actions CI/CD
+## Tech Stack
+- `Frontend`: Next.js 16 (App Router), React 19, Tailwind CSS, lucide-react, react-markdown
+- `Backend`: FastAPI (Python 3.12), Mangum, boto3, uvicorn
+- `LLM`: AWS Bedrock (model ID configurable via `bedrock_model_id`)
+- `Infrastructure`: Terraform, GitHub Actions (OIDC), S3 + DynamoDB remote state
+- `AWS Services`: S3, Lambda, API Gateway (HTTP API), CloudFront, Bedrock, IAM, optional Route53 + ACM
 
-Two workflows live in `.github/workflows/`:
+## Environments and State
+- Environments use Terraform workspaces: dev, test, prod.
+- Remote state uses S3 with a DynamoDB lock table (`twin-terraform-state-<account_id>`, `twin-terraform-locks`).
+- Resource naming follows `<project_name>-<environment>-<service>-<account_id>`.
 
-#### `deploy.yml`
+## Configuration
+- `terraform/terraform.tfvars`: project name, environment, model ID, throttles, custom domain settings.
+- `backend/.env`: local dev settings like `CORS_ORIGINS`, `USE_S3`, `S3_BUCKET`, `BEDROCK_MODEL_ID`.
 
-Handles:
+## Project Structure
+- `backend/`: FastAPI API, Bedrock integration, memory storage, Lambda packaging
+- `frontend/`: Next.js chat UI (static build output deployed to S3)
+- `terraform/`: AWS infrastructure (S3, Lambda, API Gateway, CloudFront, IAM, Route53/ACM)
+- `scripts/`: Deploy and destroy automation for dev/test/prod
+- `.github/workflows/`: GitHub Actions deploy and destroy workflows
+- `img/demo/twin_demo.gif`: demo GIF (keep this in place)
+- `memory/`: local memory store when `USE_S3=false`
 
-* OIDC authentication
-* Terraform init/apply
-* Lambda packaging
-* Frontend build + S3 upload
-* CloudFront invalidation
-* URL output (CloudFront, API Gateway, frontend bucket)
+## Deploy/Destroy Options
+Deploy:
+```powershell
+.\scripts\deploy.ps1 -Environment dev -ProjectName twin
+```
+```bash
+./scripts/deploy.sh dev twin
+```
 
-Triggered by:
+Destroy:
+```powershell
+.\scripts\destroy.ps1 -Environment dev -ProjectName twin
+```
+```bash
+./scripts/destroy.sh dev twin
+```
 
-* Push to `main` → deploys dev automatically
-* Manual run for `test` or `prod`
+## CI/CD Secrets
+GitHub Actions expects these repository secrets for OIDC deployments:
+- `AWS_ROLE_ARN`
+- `AWS_ACCOUNT_ID`
+- `DEFAULT_AWS_REGION`
 
-#### `destroy.yml`
-
-Handles:
-
-* Confirmation step
-* Terraform destroy
-* S3 emptying
-* Safe teardown
-
-Used to destroy `dev`, `test`, or `prod`.
-
-### 💬 UI Enhancements
-
-Inside `frontend/components/twin.tsx`:
-
-* **Input box automatically regains focus** after each reply (fixes the annoying UX issue).
-* **Optional avatar** at `frontend/public/avatar.png`.
-* **Updated favicon** for a more polished UI.
-
-## 🗑️ **Final Cleanup**
-
-You may remove:
-
-1. All environments using **Destroy Environment** workflow
-2. GitHub Actions IAM role
-3. Terraform state bucket
-4. DynamoDB lock table
-
-Ongoing costs if left in place: **< $0.05/month**.
-
-## **Summary**
-
-This repository delivers:
-
-* Secure, keyless AWS authentication
-* Full CI/CD automation
-* Remote Terraform state
-* Multi-environment support
-* Polished UI updates
-* Safe teardown workflows
-
-Your Digital Twin now runs on a **proper, production-grade DevOps pipeline**, deployed entirely through GitHub Actions.
+## Guides
+See the component docs for deeper detail:
+- `backend/README.md`
+- `backend/data/README.md`
+- `frontend/README.md`
