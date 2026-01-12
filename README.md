@@ -1,5 +1,4 @@
-# LLMOps Digital Twin (AWS + GitHub Actions)
-
+# LLMOps | Digital Twin
 Terraform-first LLMOps digital twin that pairs a Next.js chat UI with a serverless FastAPI backend on AWS Bedrock. It includes CI/CD automation, remote Terraform state, and secure AWS OIDC auth so environments can be created and torn down consistently.
 
 Benefits:
